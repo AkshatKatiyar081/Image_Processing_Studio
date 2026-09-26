@@ -1,0 +1,17 @@
+# Render Blueprint: deploys the FastAPI backend (with the pipeline) as a free web service.
+# Render dashboard → New → Blueprint → pick this repo. Or create a Web Service manually with the same commands.
+services:
+  - type: web
+    name: ivp-studio-api
+    runtime: python
+    plan: free
+    buildCommand: pip install ./pipeline -r backend/requirements.txt
+    startCommand: cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: ALLOWED_ORIGINS
+        value: "*"          # tighten to your Vercel URL, e.g. https://ivp-studio.vercel.app
+      - key: MAX_UPLOAD_MB
+        value: "15"

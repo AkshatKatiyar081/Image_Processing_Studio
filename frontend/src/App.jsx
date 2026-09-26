@@ -1,0 +1,183 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+import { GitCompare, SlidersHorizontal, WandSparkles } from "lucide-react";
+import { api, waitForServer } from "./lib/api.js";
+import { dataUrlToFile, lumaHistogram, prepareImage } from "./lib/image.js";
+import AutoTab from "./components/AutoTab.jsx";
+import CompareTab from "./components/CompareTab.jsx";
+import HealthCard from "./components/HealthCard.jsx";
+import ImagePanel from "./components/ImagePanel.jsx";
+import ToolsTab from "./components/ToolsTab.jsx";
+import { Button, ErrorBanner, cx } from "./components/ui.jsx";
+
+const TABS = [
+  { id: "tools", label: "Tools", icon: SlidersHorizontal },
+  { id: "compare", label: "Compare", icon: GitCompare },
+  { id: "auto", label: "Auto Fix", icon: WandSparkles },
+];
+
+/** Desktop: sidebar (image + health + tab controls) left, results right.
+ *  Mobile: image + health, then the result viewer, then the controls, so results are visible without scrolling past every control. */
+function Layout({ left, controls, main }) {
+  return (
+    <div className="grid w-full gap-4 lg:grid-cols-[360px_minmax(0,1fr)] lg:grid-rows-[auto_1fr]">
+      <aside className="space-y-4 lg:col-start-1 lg:row-start-1">{left}</aside>
+      <main className="min-w-0 lg:col-start-2 lg:row-span-2 lg:row-start-1">{main}</main>
+      <aside className="space-y-4 lg:col-start-1 lg:row-start-2">{controls}</aside>
+    </div>
+  );
+}
+
+function ServerStatus({ status, onRetry }) {
+  const map = {
+    connecting: ["bg-amber-400 animate-pulse", "Waking server…"],
+    online: ["bg-emerald-500", "Online"],
+    offline: ["bg-red-500", "Offline"],
+  };
+  const [dot, text] = map[status];
+  return (
+    <button onClick={status === "offline" ? onRetry : undefined} title={status === "offline" ? "Retry" : "Server status"}
+            className="flex items-center gap-1.5 rounded-full px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100">
+      <span className={cx("h-2 w-2 rounded-full", dot)} />
+      {text}
+    </button>
+  );
+}
+
+let nextId = 1;
+
+export default function App() {
+  const [tab, setTab] = useState("tools");
+  const [server, setServer] = useState("connecting");
+  const [schemas, setSchemas] = useState(null);
+  const [image, setImage] = useState(null);
+  const [original, setOriginal] = useState(null);
+  const [history, setHistory] = useState([]);
+  const [health, setHealth] = useState({ data: null, loading: false, error: null });
+  const [beforeHist, setBeforeHist] = useState(null);
+  const [fixRequest, setFixRequest] = useState(null);
+  const [loadError, setLoadError] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const healthCtrl = useRef(null);
+
+  const connect = useCallback(async () => {
+    setServer("connecting");
+    try {
+      await waitForServer();
+      setServer("online");
+      setSchemas(await api.modules());
+    } catch {
+      setServer("offline");
+    }
+  }, []);
+
+  useEffect(() => { connect(); }, [connect]);
+
+  // Diagnose + client-side histogram whenever the working image changes
+  useEffect(() => {
+    if (!image) return;
+    lumaHistogram(image.url).then(setBeforeHist).catch(() => setBeforeHist(null));
+    if (server !== "online") return;
+    healthCtrl.current?.abort();
+    const c = new AbortController();
+    healthCtrl.current = c;
+    setHealth({ data: null, loading: true, error: null });
+    api.diagnose(image.file, c.signal)
+      .then((d) => !c.signal.aborted && setHealth({ data: d, loading: false, error: null }))
+      .catch((e) => e.name !== "AbortError" && setHealth({ data: null, loading: false, error: e.message }));
+  }, [image?.id, server]); // eslint-disable-line
+
+  const loadFile = useCallback(async (file, name) => {
+    setLoadError(null);
+    setLoading(true);
+    try {
+      const prepared = await prepareImage(file, name);
+      const img = { ...prepared, id: nextId++, generation: 0 };
+      setImage(img);
+      setOriginal(img);
+      setHistory([]);
+    } catch (e) {
+      setLoadError(e.message || "Could not load that image.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const chain = useCallback(async (dataUrl, label) => {
+    const base = original?.name || "image";
+    const file = await dataUrlToFile(dataUrl, `${base}_edited.png`);
+    const prepared = await prepareImage(file, `${base}_edited.png`);
+    setHistory((h) => [...h, image]);
+    setImage({ ...prepared, name: `${base} + ${label}`, id: nextId++, generation: (image?.generation || 0) + 1 });
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, [image, original]);
+
+  const undo = () => {
+    if (!history.length) return;
+    setImage(history[history.length - 1]);
+    setHistory(history.slice(0, -1));
+  };
+
+  const reset = () => { setImage(original); setHistory([]); };
+
+  const onFix = (tool, preset) => { setTab("tools"); setFixRequest({ tool, preset, n: Date.now() }); };
+
+  const left = (
+    <>
+      <ImagePanel image={image} onFile={loadFile} onReset={reset} canUndo={history.length > 0} onUndo={undo} loading={loading} />
+      <ErrorBanner error={loadError} onClose={() => setLoadError(null)} />
+      <HealthCard health={health.data} loading={health.loading} error={health.error} onFix={onFix} />
+    </>
+  );
+
+  // Only the visible tab gets the shared left column (avoids duplicate paste listeners etc.).
+  const shared = (id) => ({ image, left: tab === id ? left : null, layout: Layout, beforeHist, onChain: chain });
+
+  return (
+    <div className="min-h-full">
+      <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/90 backdrop-blur">
+        <div className="mx-auto flex max-w-[1500px] flex-wrap items-center justify-between gap-3 px-4 py-2.5">
+          <div className="flex items-center gap-2.5">
+            <img src="/favicon.svg" alt="" className="h-7 w-7" />
+            <div>
+              <div className="text-sm font-bold leading-tight text-slate-900">IVP Studio</div>
+              <div className="text-[11px] leading-tight text-slate-500">Image enhancement &amp; diagnostics</div>
+            </div>
+          </div>
+          <nav className="order-3 flex w-full gap-1 rounded-xl bg-slate-100 p-1 sm:order-none sm:w-auto" role="tablist">
+            {TABS.map((t) => (
+              <button key={t.id} role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)}
+                      className={cx("flex flex-1 items-center justify-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium transition sm:flex-none",
+                        tab === t.id ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800")}>
+                <t.icon className="h-4 w-4" />{t.label}
+              </button>
+            ))}
+          </nav>
+          <ServerStatus status={server} onRetry={connect} />
+        </div>
+      </header>
+
+      <div className="mx-auto w-full max-w-[1500px] space-y-4 px-4 py-4">
+        {server === "connecting" && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+            Connecting to the processing server… On the free hosting tier the first visit can take up to a minute while it wakes up.
+          </div>
+        )}
+        {server === "offline" && (
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+            The processing server is not responding.
+            <Button size="sm" variant="secondary" onClick={connect}>Try again</Button>
+          </div>
+        )}
+
+        {/* Tabs stay mounted so each keeps its result when you switch back and forth. */}
+        <div hidden={tab !== "tools"}><ToolsTab {...shared("tools")} schemas={schemas} request={fixRequest} /></div>
+        <div hidden={tab !== "compare"}><CompareTab {...shared("compare")} /></div>
+        <div hidden={tab !== "auto"}><AutoTab {...shared("auto")} /></div>
+      </div>
+
+      <footer className="mx-auto max-w-[1500px] px-4 pt-2 pb-6 text-center text-xs text-slate-400">
+        Image &amp; Video Processing mini project · NMIMS MPSTME Shirpur · every algorithm also implemented from scratch in NumPy
+      </footer>
+    </div>
+  );
+}

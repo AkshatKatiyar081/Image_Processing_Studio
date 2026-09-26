@@ -1,0 +1,5 @@
+numpy>=1.24
+opencv-python-headless>=4.8
+scikit-image>=0.21
+matplotlib>=3.7      # experiments only
+pytest>=7            # tests only

@@ -1,0 +1,171 @@
+task,degradation,level,image,metric,direct,guided,gate_fired,verdict
+segment,sp,1,scene0_bright,IoU,0.9804,0.9927,True,recommended
+segment,sp,1,scene1_dark,IoU,0.9772,0.9918,True,recommended
+segment,sp,1,scene2_bright,IoU,0.9704,0.9921,True,recommended
+segment,sp,1,scene3_dark,IoU,0.9779,0.9894,True,recommended
+segment,sp,1,scene4_bright,IoU,0.9784,0.9902,True,recommended
+segment,sp,1,scene5_dark,IoU,0.9844,0.9928,True,recommended
+segment,sp,1,scene6_bright,IoU,0.9743,0.9907,True,recommended
+segment,sp,1,scene7_dark,IoU,0.9779,0.986,True,recommended
+segment,sp,1,scene8_bright,IoU,0.9657,0.9902,True,recommended
+segment,sp,1,scene9_dark,IoU,0.9815,0.989,True,recommended
+segment,sp,5,scene0_bright,IoU,0.9049,0.9895,True,recommended
+segment,sp,5,scene1_dark,IoU,0.9002,0.9891,True,recommended
+segment,sp,5,scene2_bright,IoU,0.8976,0.9903,True,recommended
+segment,sp,5,scene3_dark,IoU,0.9038,0.9863,True,recommended
+segment,sp,5,scene4_bright,IoU,0.8896,0.9877,True,recommended
+segment,sp,5,scene5_dark,IoU,0.9112,0.9899,True,recommended
+segment,sp,5,scene6_bright,IoU,0.8998,0.9878,True,recommended
+segment,sp,5,scene7_dark,IoU,0.8976,0.9841,True,recommended
+segment,sp,5,scene8_bright,IoU,0.9104,0.9889,True,recommended
+segment,sp,5,scene9_dark,IoU,0.9131,0.9866,True,recommended
+segment,sp,10,scene0_bright,IoU,0.7249,0.9875,True,recommended
+segment,sp,10,scene1_dark,IoU,0.7377,0.985,True,recommended
+segment,sp,10,scene2_bright,IoU,0.7144,0.9864,True,recommended
+segment,sp,10,scene3_dark,IoU,0.7093,0.9836,True,recommended
+segment,sp,10,scene4_bright,IoU,0.6964,0.9833,True,recommended
+segment,sp,10,scene5_dark,IoU,0.7152,0.9865,True,recommended
+segment,sp,10,scene6_bright,IoU,0.7659,0.9858,True,recommended
+segment,sp,10,scene7_dark,IoU,0.7384,0.9802,True,recommended
+segment,sp,10,scene8_bright,IoU,0.7327,0.9847,True,recommended
+segment,sp,10,scene9_dark,IoU,0.7239,0.9823,True,recommended
+segment,sp,20,scene0_bright,IoU,0.263,0.9742,True,recommended
+segment,sp,20,scene1_dark,IoU,0.2394,0.9761,True,recommended
+segment,sp,20,scene2_bright,IoU,0.2391,0.9756,True,recommended
+segment,sp,20,scene3_dark,IoU,0.2316,0.971,True,recommended
+segment,sp,20,scene4_bright,IoU,0.2728,0.9724,True,recommended
+segment,sp,20,scene5_dark,IoU,0.281,0.9775,True,recommended
+segment,sp,20,scene6_bright,IoU,0.2604,0.9725,True,recommended
+segment,sp,20,scene7_dark,IoU,0.282,0.9702,True,recommended
+segment,sp,20,scene8_bright,IoU,0.2533,0.9734,True,recommended
+segment,sp,20,scene9_dark,IoU,0.2776,0.9717,True,recommended
+segment,gauss,5,scene0_bright,IoU,0.9942,0.9942,False,not_needed
+segment,gauss,5,scene1_dark,IoU,0.9935,0.9935,False,not_needed
+segment,gauss,5,scene2_bright,IoU,0.9942,0.9942,False,not_needed
+segment,gauss,5,scene3_dark,IoU,0.9911,0.9911,False,not_needed
+segment,gauss,5,scene4_bright,IoU,0.9921,0.9921,False,not_needed
+segment,gauss,5,scene5_dark,IoU,0.994,0.994,False,not_needed
+segment,gauss,5,scene6_bright,IoU,0.9928,0.9928,False,not_needed
+segment,gauss,5,scene7_dark,IoU,0.9875,0.9875,False,not_needed
+segment,gauss,5,scene8_bright,IoU,0.9924,0.9924,False,not_needed
+segment,gauss,5,scene9_dark,IoU,0.9903,0.9903,False,not_needed
+segment,gauss,10,scene0_bright,IoU,0.9942,0.9912,True,recommended
+segment,gauss,10,scene1_dark,IoU,0.9924,0.9913,True,recommended
+segment,gauss,10,scene2_bright,IoU,0.9937,0.9911,True,recommended
+segment,gauss,10,scene3_dark,IoU,0.9906,0.9875,True,recommended
+segment,gauss,10,scene4_bright,IoU,0.9921,0.9895,True,recommended
+segment,gauss,10,scene5_dark,IoU,0.994,0.991,True,recommended
+segment,gauss,10,scene6_bright,IoU,0.9928,0.99,True,recommended
+segment,gauss,10,scene7_dark,IoU,0.9875,0.9848,True,recommended
+segment,gauss,10,scene8_bright,IoU,0.9924,0.9908,True,recommended
+segment,gauss,10,scene9_dark,IoU,0.9897,0.9878,True,recommended
+segment,gauss,20,scene0_bright,IoU,0.9711,0.9871,True,recommended
+segment,gauss,20,scene1_dark,IoU,0.9615,0.9878,True,recommended
+segment,gauss,20,scene2_bright,IoU,0.9658,0.9881,True,recommended
+segment,gauss,20,scene3_dark,IoU,0.9691,0.985,True,recommended
+segment,gauss,20,scene4_bright,IoU,0.9736,0.9856,True,recommended
+segment,gauss,20,scene5_dark,IoU,0.9721,0.9892,True,recommended
+segment,gauss,20,scene6_bright,IoU,0.9839,0.9863,True,recommended
+segment,gauss,20,scene7_dark,IoU,0.9702,0.9808,True,recommended
+segment,gauss,20,scene8_bright,IoU,0.9831,0.9878,True,recommended
+segment,gauss,20,scene9_dark,IoU,0.9678,0.9847,True,recommended
+segment,gauss,30,scene0_bright,IoU,0.9213,0.982,True,recommended
+segment,gauss,30,scene1_dark,IoU,0.9302,0.9822,True,recommended
+segment,gauss,30,scene2_bright,IoU,0.929,0.9832,True,recommended
+segment,gauss,30,scene3_dark,IoU,0.9313,0.9782,True,recommended
+segment,gauss,30,scene4_bright,IoU,0.9338,0.9788,True,recommended
+segment,gauss,30,scene5_dark,IoU,0.9498,0.9841,True,recommended
+segment,gauss,30,scene6_bright,IoU,0.9494,0.9796,True,recommended
+segment,gauss,30,scene7_dark,IoU,0.9332,0.9762,True,recommended
+segment,gauss,30,scene8_bright,IoU,0.9355,0.9837,True,recommended
+segment,gauss,30,scene9_dark,IoU,0.9245,0.9793,True,recommended
+segment,ramp,20,scene0_bright,IoU,0.9942,0.9942,False,not_needed
+segment,ramp,20,scene1_dark,IoU,0.9935,0.9935,False,not_needed
+segment,ramp,20,scene2_bright,IoU,0.9942,0.9942,False,not_needed
+segment,ramp,20,scene3_dark,IoU,0.9911,0.9911,False,not_needed
+segment,ramp,20,scene4_bright,IoU,0.9921,0.9921,False,not_needed
+segment,ramp,20,scene5_dark,IoU,0.994,0.994,False,not_needed
+segment,ramp,20,scene6_bright,IoU,0.9928,0.9928,False,not_needed
+segment,ramp,20,scene7_dark,IoU,0.9875,0.9875,False,not_needed
+segment,ramp,20,scene8_bright,IoU,0.9924,0.9924,False,not_needed
+segment,ramp,20,scene9_dark,IoU,0.9903,0.9903,False,not_needed
+segment,ramp,40,scene0_bright,IoU,0.2429,0.9942,True,recommended
+segment,ramp,40,scene1_dark,IoU,0.1898,0.9935,True,recommended
+segment,ramp,40,scene2_bright,IoU,0.2175,0.9942,True,recommended
+segment,ramp,40,scene3_dark,IoU,0.2216,0.9911,True,recommended
+segment,ramp,40,scene4_bright,IoU,0.1934,0.9921,True,recommended
+segment,ramp,40,scene5_dark,IoU,0.2143,0.994,True,recommended
+segment,ramp,40,scene6_bright,IoU,0.1549,0.9928,True,recommended
+segment,ramp,40,scene7_dark,IoU,0.2169,0.9875,True,recommended
+segment,ramp,40,scene8_bright,IoU,0.1535,0.9924,True,recommended
+segment,ramp,40,scene9_dark,IoU,0.2006,0.9903,True,recommended
+segment,ramp,70,scene0_bright,IoU,0.1819,0.9942,True,recommended
+segment,ramp,70,scene1_dark,IoU,0.1742,0.9935,True,recommended
+segment,ramp,70,scene2_bright,IoU,0.1955,0.9942,True,recommended
+segment,ramp,70,scene3_dark,IoU,0.1863,0.9911,True,recommended
+segment,ramp,70,scene4_bright,IoU,0.1697,0.9921,True,recommended
+segment,ramp,70,scene5_dark,IoU,0.185,0.994,True,recommended
+segment,ramp,70,scene6_bright,IoU,0.1351,0.9928,True,recommended
+segment,ramp,70,scene7_dark,IoU,0.1756,0.9875,True,recommended
+segment,ramp,70,scene8_bright,IoU,0.0007,0.9924,True,recommended
+segment,ramp,70,scene9_dark,IoU,0.0004,0.9903,True,recommended
+edges,gauss,5,camera,edge F1,0.9866,0.9866,False,not_needed
+edges,gauss,10,camera,edge F1,0.9664,0.9664,False,not_needed
+edges,gauss,20,camera,edge F1,0.8017,0.9428,True,recommended
+edges,gauss,30,camera,edge F1,0.5378,0.8912,True,recommended
+edges,sp,1,camera,edge F1,0.7525,0.9286,True,recommended
+edges,sp,5,camera,edge F1,0.4257,0.9286,True,recommended
+edges,gauss,5,coins,edge F1,0.9934,0.9934,False,not_needed
+edges,gauss,10,coins,edge F1,0.9813,0.9813,False,not_needed
+edges,gauss,20,coins,edge F1,0.901,0.9484,True,recommended
+edges,gauss,30,coins,edge F1,0.679,0.8934,True,recommended
+edges,sp,1,coins,edge F1,0.8598,0.9236,True,recommended
+edges,sp,5,coins,edge F1,0.6403,0.9251,True,recommended
+edges,gauss,5,astronaut,edge F1,0.9949,0.9949,False,not_needed
+edges,gauss,10,astronaut,edge F1,0.9834,0.9834,False,not_needed
+edges,gauss,20,astronaut,edge F1,0.8807,0.9377,True,recommended
+edges,gauss,30,astronaut,edge F1,0.6669,0.9177,True,recommended
+edges,sp,1,astronaut,edge F1,0.8346,0.9606,True,recommended
+edges,sp,5,astronaut,edge F1,0.5531,0.9594,True,recommended
+edges,gauss,5,coffee,edge F1,0.9916,0.9916,False,not_needed
+edges,gauss,10,coffee,edge F1,0.9723,0.9723,False,not_needed
+edges,gauss,20,coffee,edge F1,0.8343,0.859,True,recommended
+edges,gauss,30,coffee,edge F1,0.5954,0.8251,True,recommended
+edges,sp,1,coffee,edge F1,0.7735,0.8405,True,recommended
+edges,sp,5,coffee,edge F1,0.4675,0.8411,True,recommended
+edges,gauss,5,chelsea,edge F1,0.9713,0.9713,False,not_needed
+edges,gauss,10,chelsea,edge F1,0.8995,0.8995,False,not_needed
+edges,gauss,20,chelsea,edge F1,0.5452,0.6923,True,recommended
+edges,gauss,30,chelsea,edge F1,0.463,0.5793,True,recommended
+edges,sp,1,chelsea,edge F1,0.7568,0.9163,True,recommended
+edges,sp,5,chelsea,edge F1,0.4634,0.9123,True,recommended
+sharpen,gauss,5,camera,PSNR dB,28.91,28.91,False,not_needed
+sharpen,gauss,10,camera,PSNR dB,23.05,25.37,True,recommended
+sharpen,gauss,20,camera,PSNR dB,17.56,23.92,True,recommended
+equalize,gauss_dark,5,camera,PSNR dB,23.97,23.97,False,not_needed
+equalize,gauss_dark,10,camera,PSNR dB,21.86,16.45,True,recommended
+equalize,gauss_dark,15,camera,PSNR dB,20.1,16.44,True,recommended
+sharpen,gauss,5,coins,PSNR dB,28.84,28.84,False,not_needed
+sharpen,gauss,10,coins,PSNR dB,22.87,23.47,True,recommended
+sharpen,gauss,20,coins,PSNR dB,17.28,22.44,True,recommended
+equalize,gauss_dark,5,coins,PSNR dB,17.27,17.27,False,not_needed
+equalize,gauss_dark,10,coins,PSNR dB,14.53,18.67,True,recommended
+equalize,gauss_dark,15,coins,PSNR dB,13.04,17.57,True,recommended
+sharpen,gauss,5,astronaut,PSNR dB,29.32,29.32,False,not_needed
+sharpen,gauss,10,astronaut,PSNR dB,23.41,26.48,True,recommended
+sharpen,gauss,20,astronaut,PSNR dB,17.73,24.63,True,recommended
+equalize,gauss_dark,5,astronaut,PSNR dB,23.79,23.79,False,not_needed
+equalize,gauss_dark,10,astronaut,PSNR dB,21.07,16.87,True,recommended
+equalize,gauss_dark,15,astronaut,PSNR dB,18.93,16.79,True,recommended
+sharpen,gauss,5,coffee,PSNR dB,28.9,28.9,False,not_needed
+sharpen,gauss,10,coffee,PSNR dB,23.08,24.64,True,recommended
+sharpen,gauss,20,coffee,PSNR dB,17.41,23.37,True,recommended
+equalize,gauss_dark,5,coffee,PSNR dB,20.48,20.48,False,not_needed
+equalize,gauss_dark,10,coffee,PSNR dB,16.53,17.42,True,recommended
+equalize,gauss_dark,15,coffee,PSNR dB,14.36,16.86,True,recommended
+sharpen,gauss,5,chelsea,PSNR dB,28.76,28.76,False,not_needed
+sharpen,gauss,10,chelsea,PSNR dB,22.76,28.56,True,recommended
+sharpen,gauss,20,chelsea,PSNR dB,16.85,25.83,True,recommended
+equalize,gauss_dark,5,chelsea,PSNR dB,21.76,21.76,False,not_needed
+equalize,gauss_dark,10,chelsea,PSNR dB,16.32,22.91,True,recommended
+equalize,gauss_dark,15,chelsea,PSNR dB,13.56,20.99,True,recommended

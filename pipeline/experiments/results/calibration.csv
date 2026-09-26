@@ -1,0 +1,4 @@
+detector,current,suggested,current_tp,current_fp,current_fn,current_tn,current_precision,current_recall,current_f1,best_tp,best_fp,best_fn,best_tn,best_precision,best_recall,best_f1
+noise_sigma,5.0,6.34003,51,3,0,65,0.944,1.0,0.971,51,3,0,65,0.944,1.0,0.971
+impulse_density,0.0075,0.0077,68,1,0,118,0.986,1.0,0.993,68,1,0,118,0.986,1.0,0.993
+illumination_u,0.15,0.25098,34,58,0,95,0.37,1.0,0.54,34,38,0,115,0.472,1.0,0.642
