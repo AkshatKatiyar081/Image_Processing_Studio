@@ -9,11 +9,11 @@ ivp-studio/
 ├── pipeline/   Python image-processing package (NumPy + OpenCV), 131 tests, experiments
 ├── backend/    FastAPI server exposing the pipeline over HTTP, 19 tests
 ├── frontend/   React + Vite + Tailwind dashboard
-└── render.yaml Render deployment config for the backend
+└── api/       Vercel serverless entrypoint for the backend
 ```
 
 ```
-Browser ──► Frontend (Vercel) ──HTTPS/JSON──► Backend (Render: FastAPI + ivp_pipeline)
+Browser ──► Frontend (Vercel) ──HTTPS/JSON──► Backend (Vercel: FastAPI + ivp_pipeline)
 ```
 
 There is no database: every request is processed and returned immediately.
@@ -69,28 +69,27 @@ cd ../backend && python -m pytest -q   # 19 API tests
 
 ---
 
-## 2. Deploy (Vercel + Render, both free)
+## 2. Deploy both services on Vercel
 
-Push the whole `ivp-studio` folder to a GitHub repository first.
+Push the whole repository to GitHub first. Deploy the backend and frontend as two Vercel projects.
 
-### Backend on Render
+### Backend on Vercel
 
-1. https://render.com → **New → Blueprint** → select the repo. Render reads `render.yaml`.
-   (Manual option: **New → Web Service**, runtime Python, with the same build and start commands as in `render.yaml`:
-   build `pip install ./pipeline -r backend/requirements.txt`,
-   start `cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT`, env `PYTHON_VERSION=3.11.9`.)
-2. Wait for the deploy, then open `https://<your-service>.onrender.com/api/health`.
+1. Vercel dashboard → **Add New → Project** → import the repository.
+2. Leave **Root Directory** as the repository root. Vercel detects `api/index.py` as a Python function.
+3. Deploy, then open `https://<backend-project>.vercel.app/api/health`.
+4. In the backend project settings, add `ALLOWED_ORIGINS` with the exact URL of your deployed frontend.
 
 ### Frontend on Vercel
 
-1. https://vercel.com → **Add New → Project** → import the repo.
-2. Set **Root Directory** to `frontend`. The framework (Vite) is detected automatically.
-3. Add an environment variable **`VITE_API_URL`** = `https://<your-service>.onrender.com` (no trailing slash).
-4. Deploy. Then, optionally, set `ALLOWED_ORIGINS` on Render to your Vercel URL so only your site can call the API.
+The existing frontend project should keep **Root Directory** set to `frontend`.
 
-**Free-tier note:** Render puts the backend to sleep after about 15 minutes idle. The first visit then
-shows "Waking server…" for 30–60 s; the dashboard waits and retries automatically. **Open the site a
-few minutes before a demo or viva.** Keep the local setup ready as a backup.
+1. Add or update **`VITE_API_URL`** = `https://<backend-project>.vercel.app` (no trailing slash).
+2. Redeploy the frontend so Vite embeds the variable in the production bundle.
+3. Open the frontend and confirm the health indicator becomes online.
+
+**Note:** Vercel Python functions are request-based and have execution and package-size limits. Large
+images or long-running processing may need a dedicated Python host such as Render.
 
 ---
 
