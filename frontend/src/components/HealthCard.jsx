@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Activity, ChevronDown, CircleCheck, Info, LoaderCircle, TriangleAlert } from "lucide-react";
-import { FINDINGS } from "../lib/labels.js";
+import { FINDINGS, SEGMENTATION_ONLY_FINDINGS } from "../lib/labels.js";
 import { Card, Stat, cx } from "./ui.jsx";
 
 function Finding({ f, onFix }) {
@@ -31,11 +31,13 @@ function Finding({ f, onFix }) {
 /** "Image health": the pipeline's diagnosis in plain words, with one-click fixes. */
 export default function HealthCard({ health, loading, error, onFix }) {
   const m = health?.metrics;
+  // Lighting/separability findings only matter for segmentation: they are shown in Compare → Segment instead.
+  const findings = (health?.findings || []).filter((f) => !SEGMENTATION_ONLY_FINDINGS.has(f.code));
   return (
     <Card title="Image health" icon={Activity}
           action={loading && <LoaderCircle className="h-4 w-4 animate-spin text-slate-400" />}>
       {error && <p className="text-sm text-red-700">{error}</p>}
-      {!health && !error && <p className="text-sm text-slate-500">{loading ? "Checking the image…" : "Load an image to check it for noise, lighting and contrast problems."}</p>}
+      {!health && !error && <p className="text-sm text-slate-500">{loading ? "Checking the image…" : "Load an image to check it for noise, exposure and contrast problems."}</p>}
       {health && (
         <div className="space-y-3">
           <div className="grid grid-cols-3 gap-2">
@@ -43,13 +45,13 @@ export default function HealthCard({ health, loading, error, onFix }) {
             <Stat label="Contrast σ" value={m.std.toFixed(0)} />
             <Stat label="Noise σ" value={m.noise_sigma.toFixed(1)} />
           </div>
-          {health.findings.length === 0 ? (
+          {findings.length === 0 ? (
             <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
-              <CircleCheck className="h-4 w-4" /> Looks healthy: no noise, lighting or contrast problems found.
+              <CircleCheck className="h-4 w-4" /> Looks healthy: no noise, exposure or contrast problems found.
             </div>
           ) : (
             <ul className="space-y-1.5">
-              {[...health.findings]
+              {[...findings]
                 .sort((a, b) => (a.severity === "warning" ? -1 : 0) - (b.severity === "warning" ? -1 : 0))
                 .map((f) => <Finding key={f.code} f={f} onFix={onFix} />)}
             </ul>

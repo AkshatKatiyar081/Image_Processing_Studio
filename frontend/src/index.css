@@ -9,6 +9,17 @@
   --color-brand-700: #1d4ed8;
 }
 
+/* Chart series colours, defined once. Direct/Hadamard = orange, Guided/DCT = blue. */
+:root {
+  --series-direct: #eb6834;
+  --series-guided: #2a78d6;
+  --series-dct: #2a78d6;
+  --series-hadamard: #eb6834;
+  --series-jpeg: #1baf7a;
+  --chart-grid: #e2e8f0;
+  --chart-ink: #475569;
+}
+
 html, body, #root { height: 100%; }
 body { @apply bg-slate-50 text-slate-800 antialiased; }
 
@@ -29,3 +40,7 @@ input[type="range"] { accent-color: var(--color-brand-600); }
 input[type="checkbox"] { accent-color: var(--color-brand-600); }
 
 .pixelated { image-rendering: pixelated; }
+
+/* Scroll columns on desktop: still scroll with the wheel, touchpad or keyboard, but show no scrollbar. */
+.scroll-hidden { scrollbar-width: none; -ms-overflow-style: none; }
+.scroll-hidden::-webkit-scrollbar { display: none; }

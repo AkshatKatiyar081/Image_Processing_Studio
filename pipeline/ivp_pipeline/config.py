@@ -4,8 +4,13 @@ Diagnostic thresholds start at the spec's initial values; experiments/calibrate_
 reports calibrated values — copy them here once you are happy with them.
 """
 
+import os
+
 # Phase 1
-MAX_SIDE = 1024                 # images are downscaled so max(H, W) <= this
+# Images are downscaled so max(H, W) <= MAX_SIDE. 0 = process the full resolution (default, for running
+# locally). Set the environment variable IVP_MAX_SIDE=1024 on a small server such as Render's free tier
+# (512 MB RAM): full-resolution photos can exceed its memory and take much longer.
+MAX_SIDE = int(os.getenv("IVP_MAX_SIDE", "0"))
 
 # §9 diagnostics
 EXTREME_LOW, EXTREME_HIGH = 5, 250
@@ -47,3 +52,10 @@ GAMMA_MIN, GAMMA_MAX = 0.3, 3.0
 
 # Flattening
 FLATTEN_DOWNSCALE_ABOVE_R = 25  # estimate the background at 1/4 scale when R exceeds this
+
+# Compression (JPEG-style block coding, whole-image DCT / Walsh–Hadamard)
+ERROR_MAP_MAX_AMPLIFICATION = 16   # error maps are scaled so their 99th percentile is bright, up to x16
+RD_KEEP_PERCENTS = (0.5, 1, 2, 5, 10, 25, 50)   # rate–distortion curve points (% coefficients kept)
+CURVE_MAX_SIDE = 512               # RD / energy curves are computed on a copy at most this big
+COEF_MAP_MAX_SIDE = 1024           # coefficient maps / kept mask are display images: shrunk to at most this
+ENERGY_CURVE_POINTS = 40           # log-spaced fractions from 0.1 % to 100 %

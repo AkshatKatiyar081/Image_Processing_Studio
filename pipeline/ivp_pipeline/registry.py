@@ -112,6 +112,36 @@ SCHEMAS: dict[str, dict] = {
             _bool("keep_largest", False, "Keep only the largest connected component"),
         ],
     },
+    "compress": {
+        "title": "Image compression",
+        "syllabus": "Transforms: DCT, JPEG-style block coding, Walsh–Hadamard",
+        "params": [
+            _enum("method", ["jpeg", "dct", "hadamard"], "dct",
+                  "jpeg: 8x8 block DCT + quantisation (how real image files get small). "
+                  "dct / hadamard: whole-image transform, keep only some coefficients"),
+            _num("quality", "int", 1, 100, 75,
+                 "JPEG quality: scales the quantisation tables. Lower = coarser steps = smaller file",
+                 step=1, when={"method": ["jpeg"]}),
+            _enum("chroma_subsampling", ["4:2:0", "4:2:2", "4:4:4"], "4:2:0",
+                  "How much colour detail is kept: 4:2:0 stores colour at half width and half height",
+                  when={"method": ["jpeg"]}),
+            _enum("mode", ["keep_percent", "threshold", "zonal"], "keep_percent",
+                  "How coefficients are chosen: largest N %, a magnitude threshold, or low frequencies by position",
+                  when={"method": ["dct", "hadamard"]}),
+            _num("keep_percent", "float", 0.1, 100.0, 10.0,
+                 "Percent of coefficients kept (the largest in magnitude; DC is always kept)",
+                 step=0.1, when={"method": ["dct", "hadamard"], "mode": ["keep_percent"]}),
+            _num("threshold", "float", 0.0, 5000.0, 500.0,
+                 "Zero every coefficient with |F| below this (on the 0–255 pixel scale)",
+                 step=10, when={"method": ["dct", "hadamard"], "mode": ["threshold"]}),
+            _num("zonal_fraction", "float", 0.01, 1.0, 0.125,
+                 "Zone size k as a fraction of the shorter side",
+                 step=0.01, when={"method": ["dct", "hadamard"], "mode": ["zonal"]}),
+            _enum("zonal_shape", ["square", "l_shape"], "square",
+                  "square: keep rows < k and cols < k. l_shape: zero only the block where rows ≥ k and cols ≥ k",
+                  when={"method": ["dct", "hadamard"], "mode": ["zonal"]}),
+        ],
+    },
 }
 
 MODULES = tuple(SCHEMAS)

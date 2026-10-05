@@ -58,6 +58,15 @@ export const api = {
   guided: (file, intent, params, engine, signal) =>
     request("/api/guided", { method: "POST", body: form(file, { intent, params, engine }), signal }),
   auto: (file, engine, signal) => request("/api/auto", { method: "POST", body: form(file, { engine }), signal }),
+  inspect: (file, signal) => request("/api/inspect", { method: "POST", body: form(file), signal }),
+  compress: (file, params, engine, signal) =>
+    request("/api/compress", { method: "POST", body: form(file, { params, engine }), signal }),
+  sweep: (file, intent, params, engine, signal) =>
+    request("/api/sweep", { method: "POST", body: form(file, { intent, params, engine }), signal }),
+  compareCompression: (file, keepPercent, jpegQuality, engine, signal) =>
+    request("/api/compare-compression", {
+      method: "POST", body: form(file, { keep_percent: keepPercent, jpeg_quality: jpegQuality ?? "auto", engine }), signal,
+    }),
 };
 
 /** Ping /api/health until the server answers (Render's free tier sleeps and needs ~30-60 s to wake). */

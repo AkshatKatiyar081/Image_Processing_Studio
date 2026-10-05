@@ -15,3 +15,6 @@ dependencies = [
 
 [tool.setuptools]
 packages = ["ivp_pipeline", "ivp_pipeline.core", "ivp_pipeline.modules"]
+
+[tool.pytest.ini_options]
+markers = ["slow: runtime guards (deselect with -m \"not slow\")"]

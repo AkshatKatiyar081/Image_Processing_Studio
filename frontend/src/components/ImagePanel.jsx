@@ -44,7 +44,7 @@ export default function ImagePanel({ image, onFile, onReset, canUndo, onUndo, lo
           <div className="min-w-0 flex-1 text-sm">
             <div className="truncate font-medium text-slate-800" title={image.name}>{image.name}</div>
             <div className="text-xs text-slate-500">
-              {image.width} × {image.height} px{image.resized ? ` (shrunk from ${image.originalSize[0]} × ${image.originalSize[1]})` : ""}
+              {image.width} × {image.height} px{image.resized ? ` (shrunk for upload from ${image.originalSize[0]} × ${image.originalSize[1]})` : ""}
             </div>
             {image.generation > 0 && <div className="text-xs text-brand-700">Edited {image.generation}× (working on a result)</div>}
           </div>

@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import cv2
 import numpy as np
-from skimage.metrics import peak_signal_noise_ratio, structural_similarity
 
 from . import config
 from .core.background import estimate_background
@@ -34,11 +33,14 @@ def impulse_density(gray: np.ndarray) -> float:
     """Fraction of pixels that are extreme (<=5 or >=250) AND differ from their 3x3 median by > 50.
 
     The second condition stops legitimately black/white regions (shadows, sky) from counting.
+    Works on uint8 throughout (cv2.absdiff gives |a - b| without wrap-around), so no int16 or
+    float copies of a large image are made.
     """
     med = cv2.medianBlur(gray, 3)
-    extreme = (gray <= config.EXTREME_LOW) | (gray >= config.EXTREME_HIGH)
-    outlier = np.abs(gray.astype(np.int16) - med.astype(np.int16)) > config.IMPULSE_MEDIAN_DIFF
-    return float((extreme & outlier).mean())
+    outlier = cv2.absdiff(gray, med) > config.IMPULSE_MEDIAN_DIFF
+    del med
+    outlier &= (gray <= config.EXTREME_LOW) | (gray >= config.EXTREME_HIGH)
+    return float(np.count_nonzero(outlier) / outlier.size)
 
 
 # --------------------------------------------------------------- illumination
@@ -114,9 +116,51 @@ def dice(a: np.ndarray, b: np.ndarray) -> float:
 
 # ----------------------------------------------------------- reference-based
 def psnr(reference: np.ndarray, test: np.ndarray) -> float:
-    return float(peak_signal_noise_ratio(reference, test, data_range=255))
+    """PSNR = 10 · log10(255² / MSE) in dB; +inf for identical images (MSE = 0)."""
+    mse = float(np.mean((reference.astype(np.float64) - test.astype(np.float64)) ** 2))
+    return float("inf") if mse == 0 else float(10.0 * np.log10(255.0 ** 2 / mse))
+
+
+SSIM_WIN = 7
+
+
+def _ssim_channel(x: np.ndarray, y: np.ndarray, data_range: float = 255.0) -> float:
+    """Mean SSIM of one channel (Wang et al. 2004), with scikit-image's default settings.
+
+    Local statistics over a 7x7 uniform window (cv2.boxFilter):
+        μx, μy, σx² = N/(N−1)·(E[x²] − μx²), σy², σxy = N/(N−1)·(E[xy] − μxμy),  N = 49
+        SSIM = (2μxμy + C1)(2σxy + C2) / ((μx² + μy² + C1)(σx² + σy² + C2))
+        C1 = (0.01·L)², C2 = (0.03·L)², L = data range (255)
+    The mean is taken after cropping 3 px on each side (where the window is not complete),
+    exactly like skimage.metrics.structural_similarity, but much faster. The local maps are
+    computed in float32 (agrees with skimage to ~1e-6); the final mean is float64.
+    """
+    x = x.astype(np.float32)
+    y = y.astype(np.float32)
+    k = (SSIM_WIN, SSIM_WIN)
+
+    def box(a):
+        return cv2.boxFilter(a, cv2.CV_32F, k, normalize=True, borderType=cv2.BORDER_REFLECT)
+
+    ux, uy = box(x), box(y)
+    n = SSIM_WIN * SSIM_WIN
+    cov_norm = n / (n - 1.0)
+    ux_uy = cv2.multiply(ux, uy)
+    ux2, uy2 = cv2.multiply(ux, ux), cv2.multiply(uy, uy)
+    vx = cv2.subtract(box(cv2.multiply(x, x)), ux2)
+    vy = cv2.subtract(box(cv2.multiply(y, y)), uy2)
+    vxy = cv2.subtract(box(cv2.multiply(x, y)), ux_uy)
+    c1, c2 = (0.01 * data_range) ** 2, (0.03 * data_range) ** 2
+    num = cv2.multiply(2 * ux_uy + c1, 2 * cov_norm * vxy + c2)
+    den = cv2.multiply(ux2 + uy2 + c1, cov_norm * (vx + vy) + c2)
+    s = cv2.divide(num, den)
+    pad = (SSIM_WIN - 1) // 2
+    return float(s[pad:-pad, pad:-pad].mean(dtype=np.float64))
 
 
 def ssim(reference: np.ndarray, test: np.ndarray) -> float:
-    kw = {"channel_axis": 2} if reference.ndim == 3 else {}
-    return float(structural_similarity(reference, test, data_range=255, **kw))
+    """Mean SSIM; for RGB the average of the per-channel values (as skimage with channel_axis=2)."""
+    if reference.ndim == 3:
+        return float(np.mean([_ssim_channel(reference[:, :, c], test[:, :, c])
+                              for c in range(reference.shape[2])]))
+    return _ssim_channel(reference, test)

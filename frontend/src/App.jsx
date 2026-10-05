@@ -15,14 +15,53 @@ const TABS = [
   { id: "auto", label: "Auto Fix", icon: WandSparkles },
 ];
 
-/** Desktop: sidebar (image + health + tab controls) left, results right.
- *  Mobile: image + health, then the result viewer, then the controls, so results are visible without scrolling past every control. */
-function Layout({ left, controls, main }) {
+const DESKTOP_QUERY = "(min-width: 1024px)";   // Tailwind's lg breakpoint
+
+/** true on wide screens, where the page is split into two independently scrolling columns. */
+function useIsDesktop() {
+  const [desktop, setDesktop] = useState(() => window.matchMedia(DESKTOP_QUERY).matches);
+  useEffect(() => {
+    const mq = window.matchMedia(DESKTOP_QUERY);
+    const onChange = (e) => setDesktop(e.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+  return desktop;
+}
+
+function Footer() {
   return (
-    <div className="grid w-full gap-4 lg:grid-cols-[360px_minmax(0,1fr)] lg:grid-rows-[auto_1fr]">
-      <aside className="space-y-4 lg:col-start-1 lg:row-start-1">{left}</aside>
-      <main className="min-w-0 lg:col-start-2 lg:row-span-2 lg:row-start-1">{main}</main>
-      <aside className="space-y-4 lg:col-start-1 lg:row-start-2">{controls}</aside>
+    <footer className="px-4 pt-2 pb-6 text-center text-xs text-slate-400">
+      Image &amp; Video Processing mini project · NMIMS MPSTME Shirpur · every algorithm also implemented from scratch in NumPy
+    </footer>
+  );
+}
+
+/** Desktop: two columns that scroll on their own (scrollbars hidden): image + health + tab controls on the
+ *  left, results on the right; the mouse wheel moves the column under the cursor.
+ *  Mobile: one normal page: image + health, then the result viewer, then the controls, so results are
+ *  visible without scrolling past every control. */
+function Layout({ left, controls, main }) {
+  const desktop = useIsDesktop();
+  if (desktop) {
+    return (
+      <div className="grid h-full min-h-0 w-full grid-cols-[360px_minmax(0,1fr)] gap-4">
+        <aside data-scroll-column className="scroll-hidden min-h-0 space-y-4 overflow-y-auto overscroll-contain pb-6">
+          {left}
+          {controls}
+        </aside>
+        <main data-scroll-column className="scroll-hidden min-h-0 min-w-0 overflow-y-auto overscroll-contain">
+          {main}
+          <Footer />
+        </main>
+      </div>
+    );
+  }
+  return (
+    <div className="grid w-full gap-4">
+      <aside className="space-y-4">{left}</aside>
+      <main className="min-w-0">{main}</main>
+      <aside className="space-y-4">{controls}</aside>
     </div>
   );
 }
@@ -46,6 +85,7 @@ function ServerStatus({ status, onRetry }) {
 let nextId = 1;
 
 export default function App() {
+  const desktop = useIsDesktop();
   const [tab, setTab] = useState("tools");
   const [server, setServer] = useState("connecting");
   const [schemas, setSchemas] = useState(null);
@@ -104,11 +144,13 @@ export default function App() {
 
   const chain = useCallback(async (dataUrl, label) => {
     const base = original?.name || "image";
-    const file = await dataUrlToFile(dataUrl, `${base}_edited.png`);
-    const prepared = await prepareImage(file, `${base}_edited.png`);
+    const ext = { "image/jpeg": "jpg", "image/webp": "webp" }[dataUrl.slice(5, dataUrl.indexOf(";"))] || "png";
+    const file = await dataUrlToFile(dataUrl, `${base}_edited.${ext}`);
+    const prepared = await prepareImage(file, `${base}_edited.${ext}`);
     setHistory((h) => [...h, image]);
     setImage({ ...prepared, name: `${base} + ${label}`, id: nextId++, generation: (image?.generation || 0) + 1 });
     window.scrollTo({ top: 0, behavior: "smooth" });
+    document.querySelectorAll("[data-scroll-column]").forEach((el) => el.scrollTo({ top: 0, behavior: "smooth" }));
   }, [image, original]);
 
   const undo = () => {
@@ -131,10 +173,12 @@ export default function App() {
 
   // Only the visible tab gets the shared left column (avoids duplicate paste listeners etc.).
   const shared = (id) => ({ image, left: tab === id ? left : null, layout: Layout, beforeHist, onChain: chain });
+  const tabBox = desktop ? "min-h-0 flex-1" : undefined;   // desktop: the tab fills the space below the header
 
   return (
-    <div className="min-h-full">
-      <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/90 backdrop-blur">
+    // Desktop: exactly one screen high (header + two scrolling columns). Mobile: a normal scrolling page.
+    <div className={desktop ? "flex h-screen flex-col overflow-hidden" : "min-h-full"}>
+      <header className="sticky top-0 z-20 shrink-0 border-b border-slate-200 bg-white/90 backdrop-blur">
         <div className="mx-auto flex max-w-[1500px] flex-wrap items-center justify-between gap-3 px-4 py-2.5">
           <div className="flex items-center gap-2.5">
             <img src="/favicon.svg" alt="" className="h-7 w-7" />
@@ -156,7 +200,8 @@ export default function App() {
         </div>
       </header>
 
-      <div className="mx-auto w-full max-w-[1500px] space-y-4 px-4 py-4">
+      <div className={cx("mx-auto w-full max-w-[1500px] px-4",
+        desktop ? "flex min-h-0 flex-1 flex-col gap-4 pt-4" : "space-y-4 py-4")}>
         {server === "connecting" && (
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
             Connecting to the processing server… On the free hosting tier the first visit can take up to a minute while it wakes up.
@@ -170,14 +215,12 @@ export default function App() {
         )}
 
         {/* Tabs stay mounted so each keeps its result when you switch back and forth. */}
-        <div hidden={tab !== "tools"}><ToolsTab {...shared("tools")} schemas={schemas} request={fixRequest} /></div>
-        <div hidden={tab !== "compare"}><CompareTab {...shared("compare")} /></div>
-        <div hidden={tab !== "auto"}><AutoTab {...shared("auto")} /></div>
+        <div hidden={tab !== "tools"} className={tabBox}><ToolsTab {...shared("tools")} schemas={schemas} request={fixRequest} /></div>
+        <div hidden={tab !== "compare"} className={tabBox}><CompareTab {...shared("compare")} /></div>
+        <div hidden={tab !== "auto"} className={tabBox}><AutoTab {...shared("auto")} /></div>
       </div>
 
-      <footer className="mx-auto max-w-[1500px] px-4 pt-2 pb-6 text-center text-xs text-slate-400">
-        Image &amp; Video Processing mini project · NMIMS MPSTME Shirpur · every algorithm also implemented from scratch in NumPy
-      </footer>
+      {!desktop && <Footer />}
     </div>
   );
 }

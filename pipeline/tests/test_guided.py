@@ -81,6 +81,15 @@ def test_false_alarm_is_reported_as_no_benefit():
     assert r["verdict"]["result"] == "no_benefit"
 
 
+def test_equalize_reason_mentions_dark_only_for_dark_images():
+    bright = S.gaussian_noise(np.full((256, 256), 200, np.uint8), 15, seed=1)
+    reasons = [s["reason"] for s in ivp.run_guided(bright, "equalize")["branch_b"]["stages"]]
+    assert reasons and not any("dark" in r for r in reasons)
+    dark = S.gaussian_noise(np.full((256, 256), 40, np.uint8), 15, seed=1)
+    reasons = [s["reason"] for s in ivp.run_guided(dark, "equalize")["branch_b"]["stages"]]
+    assert any("dark" in r for r in reasons)
+
+
 @pytest.mark.parametrize("intent,img,params", [
     ("edges", S.gaussian_noise(CAM, 25), None),
     ("edges", S.gaussian_noise(CAM, 15), {"operator": "roberts"}),

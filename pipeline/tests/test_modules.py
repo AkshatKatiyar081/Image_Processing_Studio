@@ -93,6 +93,20 @@ def test_otsu_segments_synthetic_scene():
     assert r["extras"]["cutout"].shape[2] == 4
 
 
+@pytest.mark.parametrize("engine", ["opencv", "numpy"])
+def test_fill_holes_diagonal_ring_both_engines(engine):
+    from ivp_pipeline.modules.segment import _fill_holes
+    ring = np.zeros((11, 11), bool)
+    for i in range(5):     # diamond outline: neighbouring pixels touch only diagonally
+        ring[5 - i, 1 + i] = ring[1 + i, 5 + i] = ring[5 + i, 9 - i] = ring[9 - i, 5 - i] = True
+    assert _fill_holes(ring, engine, connectivity=8)[5, 5]      # 8-connected object -> closed ring
+    assert not _fill_holes(ring, engine, connectivity=4)[5, 5]  # 4-connected object -> leaky ring
+    square = np.zeros((20, 20), bool)
+    square[4:16, 4:16] = True
+    square[8:12, 8:12] = False
+    assert _fill_holes(square, engine, connectivity=4)[4:16, 4:16].all()
+
+
 def test_region_growing_seed_is_robust_to_impulse():
     img, gt = S.scene(4)
     noisy = S.salt_pepper(img, 0.05, seed=1)
@@ -147,7 +161,7 @@ def test_rgba_and_bad_engine():
 
 def test_list_modules_schema():
     s = ivp.list_modules()
-    assert set(s) == {"contrast", "denoise", "sharpen_edges", "segment"}
+    assert set(s) == {"contrast", "denoise", "sharpen_edges", "segment", "compress"}
     for mod in s.values():
         for p in mod["params"]:
             assert {"name", "type", "default", "description"} <= set(p)

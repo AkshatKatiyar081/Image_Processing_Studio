@@ -8,3 +8,6 @@ dist/
 .venv/
 *.egg-info/
 build/
+
+# local test photos (11 MB) used by pipeline/experiments/{generate_synthetic_dataset,run_e2e_tests}.py
+dataset/

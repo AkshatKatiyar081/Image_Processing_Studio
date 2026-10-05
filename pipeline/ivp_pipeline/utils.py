@@ -6,17 +6,65 @@ from typing import Callable
 import cv2
 import numpy as np
 
-from . import config
+from . import config, metrics
 from .core.histogram import histogram
 from .errors import PipelineError
 
 
-def prepare(img: np.ndarray, max_side: int = config.MAX_SIDE) -> tuple[np.ndarray, float]:
+IMPULSE_PROBE_SIDE = 2048   # impulse density is estimated on a nearest-neighbour copy at most this big
+
+
+def prepare(img: np.ndarray, max_side: int | None = None) -> tuple[np.ndarray, float]:
     """Validate an input image and downscale it so max(H, W) <= max_side.
+
+    max_side=None uses config.MAX_SIDE (env var IVP_MAX_SIDE); 0 keeps the full resolution.
 
     Accepts uint8 RGB (H x W x 3), RGBA (alpha dropped) or grayscale (H x W).
     Returns (image, scale) where scale = new_size / original_size (<= 1).
+    See prepare_with_info() for how the resize interpolation is chosen.
     """
+    out, scale, _ = prepare_with_info(img, max_side)
+    return out, scale
+
+
+def prepare_with_info(img: np.ndarray, max_side: int | None = None) -> tuple[np.ndarray, float, dict]:
+    """prepare() plus a record of how the image was resized.
+
+    Shrinking with INTER_AREA averages each output pixel over a block of input pixels, which
+    blends isolated salt-and-pepper specks into their neighbours: the defect disappears before
+    diagnostics can see it. So, for images larger than max_side:
+      1. estimate the impulse density on a nearest-neighbour copy (<= 2048 px). Nearest-neighbour
+         copies whole pixels, so specks stay specks and their density is preserved;
+      2. resize with INTER_NEAREST if that density exceeds config.IMPULSE_DENSITY (keep the
+         specks so every later stage sees the true defect), otherwise with INTER_AREA (smooth,
+         no aliasing).
+    Returns (image, scale, info) with info = {"resize_interp": "none" | "area" | "nearest",
+    "impulse_density_full_res": float or None}.
+    """
+    img = _validate(img)
+    h, w = img.shape[:2]
+    if max_side is None:
+        max_side = config.MAX_SIDE
+    if not max_side or max(h, w) <= max_side:   # 0 = full resolution
+        return np.ascontiguousarray(img), 1.0, {"resize_interp": "none", "impulse_density_full_res": None}
+
+    probe = img
+    if max(h, w) > IMPULSE_PROBE_SIDE:
+        s = IMPULSE_PROBE_SIDE / max(h, w)
+        probe = cv2.resize(img, (max(1, round(w * s)), max(1, round(h * s))), interpolation=cv2.INTER_NEAREST)
+    density = metrics.impulse_density(to_gray(probe))
+    del probe
+
+    scale = max_side / max(h, w)
+    nearest = density > config.IMPULSE_DENSITY
+    out = cv2.resize(img, (max(1, round(w * scale)), max(1, round(h * scale))),
+                     interpolation=cv2.INTER_NEAREST if nearest else cv2.INTER_AREA)
+    info = {"resize_interp": "nearest" if nearest else "area", "impulse_density_full_res": round(density, 5)}
+    return np.ascontiguousarray(out), scale, info
+
+
+def _validate(img: np.ndarray) -> np.ndarray:
+    """Check dtype/shape; drop alpha; squeeze a single channel. Returns the (possibly sliced) image."""
     if not isinstance(img, np.ndarray):
         raise PipelineError("BAD_IMAGE", "image must be a NumPy array")
     if img.dtype != np.uint8:
@@ -30,12 +78,7 @@ def prepare(img: np.ndarray, max_side: int = config.MAX_SIDE) -> tuple[np.ndarra
     h, w = img.shape[:2]
     if h < 8 or w < 8:
         raise PipelineError("BAD_IMAGE", "image must be at least 8x8 pixels")
-    scale = 1.0
-    if max(h, w) > max_side:
-        scale = max_side / max(h, w)
-        img = cv2.resize(img, (max(1, round(w * scale)), max(1, round(h * scale))),
-                         interpolation=cv2.INTER_AREA)
-    return np.ascontiguousarray(img), scale
+    return img
 
 
 def is_color(img: np.ndarray) -> bool:

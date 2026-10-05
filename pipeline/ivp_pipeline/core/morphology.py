@@ -66,11 +66,21 @@ def closing(img: np.ndarray, se: np.ndarray) -> np.ndarray:
     return erode(dilate(img, se), se)
 
 
-def fill_holes(mask: np.ndarray, connectivity: int = 4) -> np.ndarray:
+def background_connectivity(object_connectivity: int) -> int:
+    """Digital topology: the background must use the COMPLEMENTARY connectivity of the object.
+
+    An 8-connected object (pixels may touch diagonally) needs a 4-connected background,
+    otherwise the background "leaks" through the diagonal gaps of a closed ring. And vice versa.
+    """
+    return 4 if int(object_connectivity) == 8 else 8
+
+
+def fill_holes(mask: np.ndarray, connectivity: int = 8) -> np.ndarray:
     """Region filling: background pixels NOT reachable from the image border are holes.
 
     mask: bool array. Returns bool array with holes filled.
-    connectivity: 4 or 8 — controls which background pixels are considered connected.
+    connectivity: 4 or 8 — how the OBJECT is connected. The background is flooded with the
+    complementary connectivity (object 8 -> background 4, object 4 -> background 8).
     """
     background = ~mask
     h, w = mask.shape
@@ -80,5 +90,5 @@ def fill_holes(mask: np.ndarray, connectivity: int = 4) -> np.ndarray:
     seeds = np.flatnonzero((border & background).ravel())
     if seeds.size == 0:
         return mask.copy()
-    reachable = bfs_region(background, seeds, connectivity=connectivity)
+    reachable = bfs_region(background, seeds, connectivity=background_connectivity(connectivity))
     return mask | (background & ~reachable)

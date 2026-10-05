@@ -16,7 +16,7 @@ from .diagnostics import diagnose_prepared
 from .errors import PipelineError
 from .modules.sharpen_edges import edge_map_from
 from .pipeline import execute, step
-from .utils import to_gray
+from .utils import as_rgb, to_gray
 
 INTENTS = ("segment", "edges", "sharpen", "equalize")
 
@@ -82,7 +82,7 @@ def plan_and_condition(img: np.ndarray, intent: str, engine: str, target: dict |
         sigma = C.GUIDED_SHARPEN_GAUSS_SIGMA if intent == "sharpen" else C.GUIDED_GAUSS_SIGMA
         add("denoise", {"filter_type": "gaussian", "sigma": sigma}, "GAUSSIAN_NOISE",
             f"noise σ ≈ {d['noise_sigma']:.1f} > {limit:g}"
-            + (" in a dark image" if intent == "equalize" else ""))
+            + (" in a dark image" if intent == "equalize" and d["mean"] < C.DARK_MEAN else ""))
 
     # 3) uneven illumination -> morphological flattening (segmentation only)
     if intent == "segment" and d["illumination_u"] > C.ILLUMINATION_U:
@@ -123,6 +123,56 @@ def _checks(intent, stages, a, b, original, target_params):
     return checks
 
 
+ONLY_A_COLOR = (235, 104, 52)    # orange-red: only the direct route has it
+ONLY_B_COLOR = (27, 175, 122)    # green: only the guided route has it
+
+
+def _edge_maps(a: dict, b: dict, t: float):
+    ea = edge_map_from(np.hypot(a["extras"]["gx"], a["extras"]["gy"]), t)
+    eb = edge_map_from(np.hypot(b["extras"]["gx"], b["extras"]["gy"]), t)
+    return ea, eb
+
+
+def difference(intent: str, a: dict, b: dict, original: np.ndarray, target_params: dict) -> tuple:
+    """Colour-coded map of where the two routes disagree, its legend, and counts for the UI bars.
+
+    edges:   black = neither, white = both, red = edge only in A (mostly false edges from noise),
+             green = edge only in B.
+    segment: the input dimmed to 40 %; red = object only in A, green = object only in B.
+    Returns (map RGB uint8, legend list, counts dict).
+    """
+    if intent == "edges":
+        t = target_params["edge_threshold"] or C.DEFAULT_EDGE_T
+        ma, mb = _edge_maps(a, b, t)
+        out = np.zeros(ma.shape + (3,), np.uint8)
+        out[ma & mb] = 255
+        flat = Q.flat_region_mask(to_gray(original))
+        counts = {"edge_pixels_a": int(ma.sum()), "edge_pixels_b": int(mb.sum()),
+                  "false_edge_density_a": round(Q.edge_density(ma, flat), 5),
+                  "false_edge_density_b": round(Q.edge_density(mb, flat), 5)}
+        legend = [{"color": "#ffffff", "label": "Edge in both"},
+                  {"color": "#eb6834", "label": "Only in Direct (mostly false edges from noise)"},
+                  {"color": "#1baf7a", "label": "Only in Guided"},
+                  {"color": "#000000", "label": "No edge"}]
+    else:
+        ma, mb = a["extras"]["mask"] > 0, b["extras"]["mask"] > 0
+        out = np.rint(as_rgb(original).astype(np.float32) * 0.4).astype(np.uint8)
+        counts = {"fragmentation_a": Q.fragmentation(a["extras"]["raw_mask"] > 0),
+                  "fragmentation_b": Q.fragmentation(b["extras"]["raw_mask"] > 0),
+                  "eta_a": a["metrics"]["eta"], "eta_b": b["metrics"]["eta"],
+                  "n_components_a": a["metrics"]["n_components"], "n_components_b": b["metrics"]["n_components"]}
+        legend = [{"color": "#eb6834", "label": "Object only in Direct"},
+                  {"color": "#1baf7a", "label": "Object only in Guided"},
+                  {"color": "#666666", "label": "Both agree (dimmed input)"},
+                  {"note": "B is used as the reference; red = what the direct route got wrong."}]
+    only_a, only_b = ma & ~mb, mb & ~ma
+    out[only_a] = ONLY_A_COLOR
+    out[only_b] = ONLY_B_COLOR
+    counts["only_a_pixels"] = int(only_a.sum())
+    counts["only_b_pixels"] = int(only_b.sum())
+    return out, legend, counts
+
+
 def run_guided_prepared(img: np.ndarray, intent: str, params: dict | None, engine: str) -> dict:
     module, target = resolve_target(intent, params)
     conditioned, stages, diag0 = plan_and_condition(img, intent, engine, target)
@@ -140,6 +190,9 @@ def run_guided_prepared(img: np.ndarray, intent: str, params: dict | None, engin
     checks = _checks(intent, stages, branch_a, branch_b, img, target)
     n_pass = sum(c["passed"] for c in checks)
     result = "recommended" if n_pass == len(checks) else ("mixed" if n_pass else "no_benefit")
-    return {"gate_passed": False, "intent": intent, "diagnosis": diag0,
-            "branch_a": branch_a, "branch_b": branch_b,
-            "verdict": {"result": result, "checks": checks}}
+    out = {"gate_passed": False, "intent": intent, "diagnosis": diag0,
+           "branch_a": branch_a, "branch_b": branch_b,
+           "verdict": {"result": result, "checks": checks}}
+    if intent in ("edges", "segment"):
+        out["difference_map"], out["difference_legend"], out["comparison"] =             difference(intent, branch_a, branch_b, img, target)
+    return out

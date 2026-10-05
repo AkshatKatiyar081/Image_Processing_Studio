@@ -9,17 +9,10 @@ from .pipeline import step
 from .utils import hist_list
 
 
-def auto_enhance_prepared(img: np.ndarray, engine: str,
-                          pre_scale_impulse_density: float | None = None) -> dict:
+def auto_enhance_prepared(img: np.ndarray, engine: str) -> dict:
+    """img must come from utils.prepare(), whose impulse-aware resize keeps salt-and-pepper visible."""
     before = diagnose_prepared(img)
-    d = dict(before["metrics"])
-    # Salt-and-pepper spikes are isolated single-pixel extremes.  INTER_AREA
-    # downscaling blends each spike with its neighbours so impulse_density on the
-    # prepared (downscaled) image is nearly zero even when the original had real
-    # spikes.  When the caller supplies a measurement taken before downscaling, use
-    # it if it is larger than what the downscaled image reports.
-    if pre_scale_impulse_density is not None and pre_scale_impulse_density > d["impulse_density"]:
-        d["impulse_density"] = pre_scale_impulse_density
+    d = before["metrics"]
 
     cur, steps, skip_sharpen = img, [], False
 

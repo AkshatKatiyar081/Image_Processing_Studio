@@ -68,6 +68,11 @@ def region_grow(gray: np.ndarray, seed_xy: tuple[int, int], delta: float,
     Fixed predicate:    Q(p) = |f(p) - f_s| <= delta
     Adaptive predicate: Q(p) = |f(p) - mean(R)| <= delta, with mean(R) updated as pixels join.
     Returns a bool mask.
+
+    Adaptive mode marks a pixel visited only when it is ACCEPTED. A neighbour rejected
+    against an early region mean is tested again from every later frontier pixel, because
+    the mean keeps moving and the pixel may qualify later. That is the textbook predicate;
+    marking rejected pixels visited would be faster but would change the result.
     """
     h, w = gray.shape
     x, y = int(seed_xy[0]), int(seed_xy[1])
@@ -94,11 +99,9 @@ def region_grow(gray: np.ndarray, seed_xy: tuple[int, int], delta: float,
             ny, nx = cy + dy, cx + dx
             if 0 <= ny < h and 0 <= nx < w:
                 n = ny * w + nx
-                if not visited[n]:
-                    visited[n] = True  # always mark on first encounter to avoid re-checking
-                    if abs(g[n] - total / count) <= delta:
-                        in_region[n] = True
-                        total += g[n]
-                        count += 1
-                        q.append(n)
+                if not visited[n] and abs(g[n] - total / count) <= delta:
+                    visited[n] = in_region[n] = True   # rejected pixels stay unvisited: re-tested later
+                    total += g[n]
+                    count += 1
+                    q.append(n)
     return in_region.reshape(h, w)

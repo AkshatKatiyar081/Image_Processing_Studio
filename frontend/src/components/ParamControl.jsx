@@ -1,4 +1,3 @@
-import { MousePointerClick, X } from "lucide-react";
 import { OPTION_LABELS, PARAM_LABELS } from "../lib/labels.js";
 import { Segmented, Toggle, cx } from "./ui.jsx";
 
@@ -8,8 +7,8 @@ export const isVisible = (p, values) =>
 const optLabel = (v) => OPTION_LABELS[v] ?? String(v);
 
 /** One control generated from a pipeline parameter schema entry. */
-export default function ParamControl({ p, value, onChange, pickMode, onTogglePick }) {
-  const label = PARAM_LABELS[p.name] || p.name;
+export default function ParamControl({ p, value, onChange }) {
+  const label = p.label || PARAM_LABELS[p.name] || p.name;
 
   if (p.type === "bool") return <Toggle checked={value} onChange={onChange} label={label} hint={p.description} />;
 
@@ -25,22 +24,6 @@ export default function ParamControl({ p, value, onChange, pickMode, onTogglePic
             {opts.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
         )}
-      </Field>
-    );
-  }
-
-  if (p.type === "point") {
-    return (
-      <Field label={label} hint="Click the image to choose where the region starts.">
-        <div className="flex items-center gap-2">
-          <button onClick={onTogglePick}
-                  className={cx("inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium ring-1",
-                    pickMode ? "bg-brand-600 text-white ring-brand-600" : "bg-white text-slate-700 ring-slate-200 hover:bg-slate-50")}>
-            <MousePointerClick className="h-3.5 w-3.5" /> {pickMode ? "Picking… click the image" : "Pick on image"}
-          </button>
-          <span className="text-xs text-slate-600 tabular-nums">{value ? `x ${value[0]}, y ${value[1]}` : "centre (default)"}</span>
-          {value && <button onClick={() => onChange(null)} aria-label="Clear seed" className="rounded p-0.5 text-slate-400 hover:bg-slate-100"><X className="h-3.5 w-3.5" /></button>}
-        </div>
       </Field>
     );
   }

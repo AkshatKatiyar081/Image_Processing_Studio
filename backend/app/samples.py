@@ -30,6 +30,10 @@ _SPECS = [
      lambda: data.moon()),
     ("page", "Page", "Scanned text with shading",
      lambda: data.page()),
+    ("coffee", "Coffee", "Colourful. Try Compression",
+     lambda: data.coffee()),
+    ("chelsea", "Chelsea the cat", "Fur texture. Try Compression",
+     lambda: data.chelsea()),
 ]
 
 

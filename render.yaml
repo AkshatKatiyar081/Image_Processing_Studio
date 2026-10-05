@@ -15,3 +15,5 @@ services:
         value: "*"          # tighten to your Vercel URL, e.g. https://ivp-studio.vercel.app
       - key: MAX_UPLOAD_MB
         value: "15"
+      - key: IVP_MAX_SIDE          # process at most 1024 px here (512 MB RAM); locally the default is full resolution
+        value: "1024"

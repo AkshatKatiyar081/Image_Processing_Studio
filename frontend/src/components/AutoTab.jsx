@@ -3,7 +3,7 @@ import { ArrowRight, CircleCheck, Download, WandSparkles } from "lucide-react";
 import { api } from "../lib/api.js";
 import { download } from "../lib/image.js";
 import { FINDINGS, toolById } from "../lib/labels.js";
-import CompareSlider from "./CompareSlider.jsx";
+import BeforeAfterView, { ViewToggle } from "./BeforeAfterView.jsx";
 import Histogram from "./Histogram.jsx";
 import { Button, Card, ErrorBanner, Spinner, cx } from "./ui.jsx";
 
@@ -15,6 +15,7 @@ const STEP_TITLE = {
 
 export default function AutoTab({ image, left, layout: Layout, beforeHist, onChain }) {
   const [result, setResult] = useState(null);
+  const [view, setView] = useState("slider");   // "slider" | "side"
   const [running, setRunning] = useState(false);
   const [error, setError] = useState(null);
   const ctrl = useRef(null);
@@ -62,12 +63,15 @@ export default function AutoTab({ image, left, layout: Layout, beforeHist, onCha
       <div className="space-y-4">
         <Card>
           <div className="space-y-3">
-            <CompareSlider before={result?.input || image.url} after={result?.image} afterLabel="Auto fixed"
-                           busy={running} overlay={<Spinner label="Analysing and fixing…" />} />
+            <BeforeAfterView view={view} before={result?.input || image.url} after={result?.image} afterLabel="Auto fixed"
+                             busy={running} overlay={<Spinner label="Analysing and fixing…" />} />
             <ErrorBanner error={error} onClose={() => setError(null)} />
             {result && (
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="text-xs text-slate-500">Drag the divider to compare · {result.meta.total_ms} ms</span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <ViewToggle value={view} onChange={setView} />
+                  <span className="text-xs text-slate-500">{view === "slider" ? "Drag the divider to compare · " : ""}{result.meta.total_ms} ms</span>
+                </div>
                 <div className="flex gap-2">
                   <Button size="sm" variant="secondary" onClick={() => onChain(result.image, "Auto Fix")}>Keep editing this result</Button>
                   <Button size="sm" onClick={() => download(result.image, `${image.name}_autofix.png`)}><Download className="h-4 w-4" />Download</Button>

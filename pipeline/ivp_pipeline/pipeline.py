@@ -7,7 +7,7 @@ import numpy as np
 
 from . import registry
 from .errors import PipelineError
-from .modules import contrast, denoise, segment, sharpen_edges
+from .modules import compress, contrast, denoise, segment, sharpen_edges
 from .utils import hist_list
 
 RUNNERS = {
@@ -15,6 +15,7 @@ RUNNERS = {
     "denoise": denoise.run,
     "sharpen_edges": sharpen_edges.run,
     "segment": segment.run,
+    "compress": compress.run,
 }
 ENGINES = ("opencv", "numpy")
 

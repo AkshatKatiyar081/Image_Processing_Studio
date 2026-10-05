@@ -101,6 +101,25 @@ def test_fill_holes():
     assert not filled[:5, :10].any()    # outside background untouched
 
 
+def diamond_ring(n=11):
+    """1-px diamond outline whose pixels touch only diagonally (8-connected, not 4-connected)."""
+    m = np.zeros((n, n), bool)
+    c = n // 2
+    for i in range(c):
+        m[c - i, 1 + i] = m[1 + i, c + i] = m[c + i, n - 2 - i] = m[n - 2 - i, c - i] = True
+    return m
+
+
+def test_fill_holes_complementary_connectivity():
+    """An 8-connected object needs a 4-connected background flood, or the hole leaks out diagonally."""
+    ring = diamond_ring()
+    c = ring.shape[0] // 2
+    assert not ring[c, c]
+    assert M.fill_holes(ring, connectivity=8)[c, c]       # object 8-connected -> hole filled
+    assert M.fill_holes(ring)[c, c]                        # default treats the object as 8-connected
+    assert not M.fill_holes(ring, connectivity=4)[c, c]   # object 4-connected -> not a closed ring
+
+
 @pytest.mark.parametrize("seed_rc,tol", [((150, 200), 20), ((20, 20), 10), ((256, 256), 30)])
 def test_region_grow_matches_skimage_flood(seed_rc, tol):
     g = data.camera()
@@ -113,3 +132,15 @@ def test_region_grow_adaptive_runs_and_contains_seed():
     g = data.camera()
     m = R.region_grow(g, (200, 150), 12, adaptive=True)
     assert m[150, 200] and m.sum() > 1
+
+
+def test_region_grow_adaptive_retests_rejected_pixels():
+    """A pixel rejected against the early region mean must be accepted once the mean moves closer.
+
+        10   8        seed = 0 (bottom-left), delta = 6, 4-connectivity
+         0   5        10 is rejected first (|10 - 0| > 6), then 5 and 8 join (mean 4.33),
+                      and 10 is re-tested from 8: |10 - 4.33| <= 6 -> accepted.
+    """
+    g = np.array([[10, 8], [0, 5]], np.uint8)
+    m = R.region_grow(g, (0, 1), 6, connectivity=4, adaptive=True, seed_mode="pixel")
+    assert m.all()
