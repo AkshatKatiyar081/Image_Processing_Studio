@@ -6,14 +6,14 @@ operators fail on noisy or unevenly lit images, and what fixing the image first 
 
 ```
 ivp-studio/
-├── pipeline/   Python image-processing package (NumPy + OpenCV), 232 tests, experiments
-├── backend/    FastAPI server exposing the pipeline over HTTP, 40 tests
+├── pipeline/   Python image-processing package (NumPy + OpenCV), 268 tests, experiments
+├── backend/    FastAPI server exposing the pipeline over HTTP, 47 tests
 ├── frontend/   React + Vite + Tailwind dashboard
-└── render.yaml Render deployment config for the backend
+└── api/       Vercel serverless entrypoint for the backend
 ```
 
 ```
-Browser ──► Frontend (Vercel) ──HTTPS/JSON──► Backend (Render: FastAPI + ivp_pipeline)
+Browser ──► Frontend (Vercel) ──HTTPS/JSON──► Backend (Vercel: FastAPI + ivp_pipeline)
 ```
 
 There is no database: every request is processed and returned immediately.
@@ -66,35 +66,42 @@ In development, Vite forwards `/api` to `localhost:8000`, so no configuration is
 ### Run the tests
 
 ```bash
-cd pipeline && python -m pytest -q     # 232 tests (algorithms vs OpenCV/SciPy, guided mode, compression, sweeps, …)
-cd ../backend && python -m pytest -q   # 40 API tests
+cd pipeline && python -m pytest -q     # 268 tests (algorithms vs OpenCV/SciPy, guided mode, compression, sweeps, …)
+cd ../backend && python -m pytest -q   # 47 API tests
 ```
 
 ---
 
-## 2. Deploy (Vercel + Render, both free)
+## 2. Deploy both services on Vercel
 
-Push the whole `ivp-studio` folder to a GitHub repository first.
+Push the whole repository to GitHub first. Deploy the backend and frontend as two Vercel projects.
 
-### Backend on Render
+### Backend on Vercel
 
-1. https://render.com → **New → Blueprint** → select the repo. Render reads `render.yaml`.
-   (Manual option: **New → Web Service**, runtime Python, with the same build and start commands as in `render.yaml`:
-   build `pip install ./pipeline -r backend/requirements.txt`,
-   start `cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT`, env `PYTHON_VERSION=3.11.9`.)
-2. Wait for the deploy, then open `https://<your-service>.onrender.com/api/health`.
+1. Vercel dashboard → **Add New → Project** → import the repository.
+2. Leave **Root Directory** as the repository root. Vercel detects `api/index.py` as a Python function.
+3. Deploy, then open `https://<backend-project>.vercel.app/api/health`.
+4. In the backend project settings, add `ALLOWED_ORIGINS` with the exact URL of your deployed frontend.
 
 ### Frontend on Vercel
 
-1. https://vercel.com → **Add New → Project** → import the repo.
-2. Set **Root Directory** to `frontend`. The framework (Vite) is detected automatically.
-3. Add environment variables **`VITE_API_URL`** = `https://<your-service>.onrender.com` (no trailing slash) and
-   **`VITE_MAX_UPLOAD_SIDE`** = `2048` (shrinks big photos in the browser; the free Render instance has 512 MB RAM).
-4. Deploy. Then, optionally, set `ALLOWED_ORIGINS` on Render to your Vercel URL so only your site can call the API.
+The existing frontend project should keep **Root Directory** set to `frontend`.
 
-**Free-tier note:** Render puts the backend to sleep after about 15 minutes idle. The first visit then
-shows "Waking server…" for 30–60 s; the dashboard waits and retries automatically. **Open the site a
-few minutes before a demo or viva.** Keep the local setup ready as a backup.
+1. Add or update **`VITE_API_URL`** = `https://<backend-project>.vercel.app` (no trailing slash).
+2. Add **`VITE_MAX_UPLOAD_SIDE`** = `2048`, so big photos are shrunk in the browser before upload.
+3. Redeploy the frontend so Vite embeds the variables in the production bundle.
+4. Open the frontend and confirm the health indicator becomes online.
+
+### Image size limits for a hosted backend
+
+Locally, everything runs at full resolution. On a hosted backend, set **`IVP_MAX_SIDE`** = `1024` in the
+backend project's environment variables (Render: already in `render.yaml`), together with
+`VITE_MAX_UPLOAD_SIDE` = `2048` on the frontend (see *Image size* in section 3).
+
+**Note:** Vercel Python functions are request-based and have execution and package-size limits, and a
+request or response body may be at most about 4.5 MB. Full-resolution results (several images per response,
+especially Compare → Compression) can exceed that, which is another reason to use the limits above. Large
+images or long-running processing may need a dedicated Python host such as Render.
 
 ---
 

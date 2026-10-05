@@ -8,7 +8,7 @@ dashboard/API layer calls the functions below.
 
 ```
 pip install -r requirements.txt
-python -m pytest -q                      # 232 tests, ~1 min (-m "not slow" skips the runtime guard)
+python -m pytest -q                      # 268 tests, ~1 min (-m "not slow" skips the runtime guard)
 python experiments/calibrate_gate.py     # threshold calibration  -> experiments/results/calibration.md
 python experiments/run_benchmark.py      # Direct vs Guided grid  -> results/benchmark.md, direct_vs_guided.png, runtime.md
 python experiments/make_examples.py      # visual examples        -> results/examples.png
@@ -103,7 +103,7 @@ ivp_pipeline/
   auto.py            one-click enhance
   metrics.py         noise σ (Immerkær), impulse density, U_bg, IoU/Dice, edge F1, PSNR, SSIM (OpenCV box filter)
   synthetic.py       test scenes with exact masks + controlled degradations
-tests/               232 tests; every NumPy algorithm is checked against OpenCV / scikit-image / SciPy
+tests/               268 tests; every NumPy algorithm is checked against OpenCV / scikit-image / SciPy
 experiments/         calibration, benchmark, example figures (outputs in experiments/results/),
                      generate_synthetic_dataset.py and run_e2e_tests.py (use <repo>/dataset, git-ignored)
 ```
