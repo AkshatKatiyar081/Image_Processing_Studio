@@ -6,8 +6,8 @@ operators fail on noisy or unevenly lit images, and what fixing the image first 
 
 ```
 ivp-studio/
-├── pipeline/   Python image-processing package (NumPy + OpenCV), 268 tests, experiments
-├── backend/    FastAPI server exposing the pipeline over HTTP, 47 tests
+├── pipeline/   Python image-processing package (NumPy + OpenCV), 294 tests, experiments
+├── backend/    FastAPI server exposing the pipeline over HTTP, 60 tests
 ├── frontend/   React + Vite + Tailwind dashboard
 └── api/       Vercel serverless entrypoint for the backend
 ```
@@ -66,8 +66,8 @@ In development, Vite forwards `/api` to `localhost:8000`, so no configuration is
 ### Run the tests
 
 ```bash
-cd pipeline && python -m pytest -q     # 268 tests (algorithms vs OpenCV/SciPy, guided mode, compression, sweeps, …)
-cd ../backend && python -m pytest -q   # 47 API tests
+cd pipeline && python -m pytest -q     # 294 tests (algorithms vs OpenCV/SciPy, guided mode, compression, sweeps, …)
+cd ../backend && python -m pytest -q   # 60 API tests (incl. a 12 MP photo through every endpoint)
 ```
 
 ---
@@ -88,20 +88,27 @@ Push the whole repository to GitHub first. Deploy the backend and frontend as tw
 The existing frontend project should keep **Root Directory** set to `frontend`.
 
 1. Add or update **`VITE_API_URL`** = `https://<backend-project>.vercel.app` (no trailing slash).
-2. Add **`VITE_MAX_UPLOAD_SIDE`** = `2048`, so big photos are shrunk in the browser before upload.
-3. Redeploy the frontend so Vite embeds the variables in the production bundle.
-4. Open the frontend and confirm the health indicator becomes online.
+2. Redeploy the frontend so Vite embeds the variable in the production bundle.
+3. Open the frontend and confirm the health indicator becomes online, and that the upload box shows
+   **"Max 4.2 MB · 25 MP"** (the limits come from the backend, see below).
 
 ### Image size limits for a hosted backend
 
-Locally, everything runs at full resolution. On a hosted backend, set **`IVP_MAX_SIDE`** = `1024` in the
-backend project's environment variables (Render: already in `render.yaml`), together with
-`VITE_MAX_UPLOAD_SIDE` = `2048` on the frontend (see *Image size* in section 3).
+Vercel functions accept at most **4.5 MB per request and per reply**. The app is built around that:
 
-**Note:** Vercel Python functions are request-based and have execution and package-size limits, and a
-request or response body may be at most about 4.5 MB. Full-resolution results (several images per response,
-especially Compare → Compression) can exceed that, which is another reason to use the limits above. Large
-images or long-running processing may need a dedicated Python host such as Render.
+* **Replies carry previews only** (≤ 1280 px JPEG; masks as PNG), so every reply stays far below the limit,
+  even for a 12 MP photo processed at full resolution: Tools 0.7–1.2 MB, Auto Fix 0.6 MB,
+  Compare → Segment 2.2 MB, Compare → Compression 2.6 MB (they used to be 6–113 MB).
+* **Full-quality results are separate files**, fetched only for *Download* and *Keep editing this result*
+  (`/file` endpoints). A PNG that would be over the limit is sent as JPEG 95 (then 90 / 85 / 80) and the
+  dashboard says so.
+* **Uploads over the limit are refused in the browser** with a clear message. On Vercel the backend detects
+  the platform (`VERCEL` env var) and uses **4.2 MB**; elsewhere 15 MB. Override with `MAX_UPLOAD_MB`.
+
+Optional: `IVP_MAX_SIDE` = `1024` makes processing faster on a small server, but then results and downloads
+are at most 1024 px. `VITE_MAX_UPLOAD_SIDE` (e.g. `3072`) shrinks bigger photos in the browser before upload
+instead of refusing them (a JPEG stays a JPEG). Long-running requests are still bound by the function's time
+and memory limits on your Vercel plan.
 
 ---
 
@@ -118,16 +125,20 @@ button. Lighting and separability findings matter only for segmentation, so they
 ("Why?") instead.
 
 **Image size.** Run locally, everything works at the **full resolution** of your image (no shrinking). The
-limits are settings, used only for the hosted version:
+limits are settings:
 
-| Setting | Where | Local default | Render / Vercel |
+| Setting | Where | Local default | Vercel |
 |---|---|---|---|
-| `IVP_MAX_SIDE` | backend env | `0` = full resolution | `1024` (in `render.yaml`) |
-| `VITE_MAX_UPLOAD_SIDE` | frontend env (build time) | `0` = upload full size | `2048` |
+| `MAX_UPLOAD_MB` | backend env | 15 | 4.2 (automatic) |
+| `MAX_DOWNLOAD_MB` | backend env | = `MAX_UPLOAD_MB` | = `MAX_UPLOAD_MB` |
 | `MAX_PIXELS` | backend env | 25 000 000 | 25 000 000 |
+| `PREVIEW_SIDE` | backend env | 1280 | 1280 |
+| `IVP_MAX_SIDE` | backend env | `0` = full resolution | optional, e.g. `1024` |
+| `VITE_MAX_UPLOAD_SIDE` | frontend env (build time) | `0` = upload full size | optional |
 
-When a limit is set, photos are shrunk with nearest-neighbour sampling so salt-and-pepper specks survive.
-`MAX_PIXELS` refuses images over 25 MP before decoding them (raise it for larger phone photos).
+The dashboard reads the upload and pixel limits from `/api/health`, shows them in the upload box and refuses
+larger files with a message. When a size limit shrinks an image, nearest-neighbour sampling is used so
+salt-and-pepper specks survive. `MAX_PIXELS` refuses images over 25 MP before decoding them.
 Full resolution is slower: on a 3072 × 2304 photo, DCT compression takes about 4 s, Hadamard about 8 s
 (padded to 4096 × 4096), and Compare → Compression about 12–16 s. The chart curves and the degradation sweep
 always use a ≤ 512 px copy for speed (the UI says so).
@@ -144,13 +155,22 @@ always use a ≤ 512 px copy for speed (the UI says so).
 | `POST /api/guided` | `file`, `intent`, `params`, `engine` | `gate_passed`, `diagnosis`, `branch_a`, `branch_b` (with stages), `verdict` |
 | `POST /api/auto` | `file`, `engine` | fixed image, `steps`, diagnosis before/after, histograms |
 | `POST /api/sweep` | `file`, `intent` (`segment` or `edges`), `params`, `engine` | `axis`, `metric`, `points[{level, x, direct, guided, gate_fired}]`, `user_point_index`, `reference_note` (numbers only) |
-| `POST /api/compare-compression` | `file`, `keep_percent`, `engine` | `dct`, `hadamard` (image, coefficient maps, error map, metrics), `rd_curve`, `energy_curve`, `curve_scale`, `summary` |
+| `POST /api/compare-compression` | `file`, `keep_percent`, `jpeg_quality`, `engine` | `dct`, `hadamard`, `jpeg` (preview, coefficient maps, error map, metrics), `rd_curve`, `energy_curve`, `size_curve`, `curve_scale`, `summary` |
+| `POST /api/inspect` | `file` | format, size, pixels, bits per pixel, JPEG quality estimate and subsampling, metadata |
+| `POST /api/compress` | `file`, `params`, `engine` | preview of the compressed FILE, its metrics, `file` (format, bytes, quality, `downloadable`, `note`), `upload` |
+| `POST /api/process/file`, `/api/auto/file`, `/api/compress/file` | same as without `/file` | the **full-quality result file** |
+| `POST /api/guided/file` | as `/api/guided` + `branch` (`a`/`b`), `layer` (`image`/`mask`) | full-quality result of one route |
+| `POST /api/compare-compression/file` | as `/api/compare-compression` + `method` | full-quality result of one method (JPEG-style: the real JPEG file) |
 
-`/api/process` accepts `module="compress"`. `/api/guided` also returns `difference_map` (PNG), `difference_legend`
-and `comparison` (counts for the bars) when the guided route ran.
+JSON replies carry **previews** (≤ 1280 px, `PREVIEW_SIDE`): JPEG for photos, PNG for masks and edge maps.
+The `/file` endpoints run the same operation again and answer with the file itself (PNG, or JPEG 95…80 when the
+PNG is over `MAX_DOWNLOAD_MB`); the headers `X-IVP-Format`, `X-IVP-Quality` and `X-IVP-Note` (URL-encoded) say
+which, and are exposed through CORS. `/api/health` also returns `limits` (`max_upload_bytes`,
+`max_download_bytes`, `max_pixels`). `/api/guided` also returns `difference_map`, `difference_legend` and
+`comparison` (counts for the bars) when the guided route ran.
 
-Errors come back as HTTP 422 with `{"error": {"code", "message"}}` (for example `TOO_LARGE`, `BAD_PARAM`,
-`BAD_REQUEST`). Unexpected crashes return HTTP 500 with code `INTERNAL`, still with CORS headers, so the browser
+Errors come back as HTTP 422 with `{"error": {"code", "message"}}` (for example `TOO_LARGE`, `RESULT_TOO_LARGE`,
+`BAD_PARAM`, `BAD_REQUEST`). Unexpected crashes return HTTP 500 with code `INTERNAL`, still with CORS headers, so the browser
 shows the message instead of a CORS error.
 
 ## 5. Project docs

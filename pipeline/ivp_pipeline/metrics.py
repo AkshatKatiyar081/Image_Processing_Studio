@@ -43,6 +43,31 @@ def impulse_density(gray: np.ndarray) -> float:
     return float(np.count_nonzero(outlier) / outlier.size)
 
 
+# ---------------------------------------------------------- enlarged noise (screenshots)
+def half_scale(gray: np.ndarray) -> np.ndarray:
+    """Every 2nd pixel in both directions (NO averaging, which would hide the noise being measured).
+    Noise that was enlarged 1.5–2x becomes pixel-sized again at this scale."""
+    return np.ascontiguousarray(gray[::2, ::2])
+
+
+def speck_density(gray: np.ndarray, diff: int = config.IMPULSE_MEDIAN_DIFF,
+                  max_area: int = config.SPECK_MAX_AREA) -> float:
+    """Share of pixels that differ from their 3x3 median by > diff AND form tiny isolated groups (≤ max_area px,
+    8-connected). Unlike impulse_density it does not require pure black/white, so specks softened by resizing
+    still count; the size test keeps edges and text strokes (long connected outliers) out."""
+    out = (cv2.absdiff(gray, cv2.medianBlur(gray, 3)) > diff).astype(np.uint8)
+    n, labels, stats, _ = cv2.connectedComponentsWithStats(out, connectivity=8)
+    small = np.zeros(n, bool)
+    small[1:] = stats[1:, cv2.CC_STAT_AREA] <= max_area
+    return float(np.count_nonzero(small[labels]) / labels.size)
+
+
+def coarse_noise(gray: np.ndarray) -> dict:
+    """Noise σ and speck density measured on the half-scale copy (see config: enlarged noise)."""
+    small = half_scale(gray)
+    return {"noise_sigma_coarse": noise_sigma(small), "speck_density_coarse": speck_density(small)}
+
+
 # --------------------------------------------------------------- illumination
 def illumination_unevenness(gray: np.ndarray) -> tuple[float, np.ndarray]:
     """U_bg = (P95(B) - P5(B)) / 255, B = morphological background with R = max(H, W) / 10."""

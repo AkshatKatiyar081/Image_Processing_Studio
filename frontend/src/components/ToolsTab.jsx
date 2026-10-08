@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, Cpu, Download, FileImage, SlidersHorizontal, WandSparkles } from "lucide-react";
-import { api } from "../lib/api.js";
-import { download, extFor } from "../lib/image.js";
+import { EXTENSION, api, files } from "../lib/api.js";
+import { download } from "../lib/image.js";
 import { COMPRESS_DETAIL_KEYS, HIDDEN_OPTIONS, METRIC_LABELS, TOOL_PARAM_LABELS, TOOLS, formatBytes, formatMetric, toolById } from "../lib/labels.js";
 import BeforeAfterView, { ViewToggle } from "./BeforeAfterView.jsx";
 import Histogram from "./Histogram.jsx";
@@ -34,7 +34,9 @@ export default function ToolsTab({ image, schemas, left, request, beforeHist, on
   const [params, setParams] = useState({});
   const [engine, setEngine] = useState("opencv");
   const [advanced, setAdvanced] = useState(false);
-  const [result, setResult] = useState(null);   // { data, tool }
+  const [result, setResult] = useState(null);   // { data, tool, send, engine }
+  const [saving, setSaving] = useState(null);   // "download" | "chain" while the full-quality file is fetched
+  const [notice, setNotice] = useState(null);   // e.g. "Saved as JPEG (quality 95) because …"
   const [view, setView] = useState("slider");   // "slider" | "side"
   const [running, setRunning] = useState(false);
   const [error, setError] = useState(null);
@@ -69,7 +71,7 @@ export default function ToolsTab({ image, schemas, left, request, beforeHist, on
       const data = tid === "compress"
         ? await api.compress(image.file, send, eng, c.signal)
         : await api.process(image.file, tid, send, eng, c.signal);
-      if (!c.signal.aborted) setResult({ data, tool: tid });
+      if (!c.signal.aborted) setResult({ data, tool: tid, send, engine: eng });
     } catch (e) {
       if (e.name !== "AbortError") setError(e.message);
     } finally {
@@ -89,7 +91,7 @@ export default function ToolsTab({ image, schemas, left, request, beforeHist, on
   }, [schemas, run, info]);
 
   // new image -> clear result
-  useEffect(() => { setResult(null); setError(null); ctrl.current?.abort(); }, [image?.id]);
+  useEffect(() => { setResult(null); setError(null); setNotice(null); ctrl.current?.abort(); }, [image?.id]);
 
   // "Fix it" buttons in the health card
   useEffect(() => { if (request && schemas) choosePreset(request.tool, request.preset); }, [request]); // eslint-disable-line
@@ -110,8 +112,33 @@ export default function ToolsTab({ image, schemas, left, request, beforeHist, on
     setPresetId("custom");
   };
 
-  const afterUrl = result?.data.image || null;
-  const beforeUrl = result?.data.input || image?.url;
+  const afterUrl = result?.data.image || null;      // a preview (≤ 1280 px)
+  const beforeUrl = image?.url;
+
+  /** Download / Keep editing use the FULL-QUALITY result, fetched only when clicked. */
+  const save = async (action) => {
+    setSaving(action);
+    setError(null);
+    setNotice(null);
+    try {
+      const f = result.tool === "compress"
+        ? await files.compress(image.file, result.send, result.engine)
+        : await files.process(image.file, result.tool, result.send, result.engine);
+      if (f.note && result.tool !== "compress") setNotice(f.note);   // compression already lists it in its warnings
+      const name = toolById(result.tool)?.name || result.tool;
+      if (action === "chain") {
+        await onChain(f.file, name);
+      } else {
+        const suffix = result.tool === "compress" ? "compressed" : result.tool;
+        download(f.file, `${image.name}_${suffix}.${EXTENSION[f.format] || "png"}`);
+      }
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSaving(null);
+    }
+  };
+  const blocked = isCompressNotDownloadable(result);
   const metrics = result?.data.metrics || {};
   const isCompress = result?.tool === "compress";
 
@@ -192,10 +219,10 @@ export default function ToolsTab({ image, schemas, left, request, beforeHist, on
                 {view === "slider" && <span className="text-xs text-slate-500">Drag the divider to compare.</span>}
               </div>
               <div className="flex flex-wrap gap-2">
-                <Button size="sm" variant="secondary" onClick={() => onChain(afterUrl, toolById(result.tool)?.name || result.tool)}>Keep editing this result</Button>
-                <Button size="sm" onClick={() => download(afterUrl, isCompress
-                  ? `${image.name}_compressed.${result.data.file.extension}`
-                  : `${image.name}_${result.tool}.${extFor(afterUrl)}`)}>
+                <Button size="sm" variant="secondary" onClick={() => save("chain")} loading={saving === "chain"}
+                        disabled={!!saving || blocked}>Keep editing this result</Button>
+                <Button size="sm" onClick={() => save("download")} loading={saving === "download"} disabled={!!saving || blocked}
+                        title={blocked ? "This file is over the download limit. Choose a lower quality." : undefined}>
                   <Download className="h-4 w-4" />
                   {isCompress ? `Download ${result.data.file.format} (${formatBytes(result.data.file.bytes)})` : "Download"}
                 </Button>
@@ -203,6 +230,7 @@ export default function ToolsTab({ image, schemas, left, request, beforeHist, on
             </div>
           )}
           <ErrorBanner error={error} onClose={() => setError(null)} />
+          {notice && <p className="rounded-lg bg-sky-50 px-3 py-2 text-xs text-sky-800">{notice}</p>}
           {result?.data.warnings?.map((w) => (
             <p key={w} className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">{w}</p>
           ))}
@@ -241,6 +269,8 @@ export default function ToolsTab({ image, schemas, left, request, beforeHist, on
 
   return <Layout left={left} controls={sidebar} main={main} />;
 }
+
+const isCompressNotDownloadable = (result) => result?.tool === "compress" && result.data.file?.downloadable === false;
 
 /** Image details before compressing; your file vs the compressed file afterwards. */
 function FileCard({ info, error, file }) {

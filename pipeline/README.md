@@ -8,7 +8,7 @@ dashboard/API layer calls the functions below.
 
 ```
 pip install -r requirements.txt
-python -m pytest -q                      # 268 tests, ~1 min (-m "not slow" skips the runtime guard)
+python -m pytest -q                      # 294 tests, ~1 min (-m "not slow" skips the runtime guard)
 python experiments/calibrate_gate.py     # threshold calibration  -> experiments/results/calibration.md
 python experiments/run_benchmark.py      # Direct vs Guided grid  -> results/benchmark.md, direct_vs_guided.png, runtime.md
 python experiments/make_examples.py      # visual examples        -> results/examples.png
@@ -39,7 +39,7 @@ ivp.degradation_sweep(rgb, "edges", {"operator": "sobel"})   # accuracy vs added
 | `run_module(img, module, params=None, engine="opencv")` | `input` (the working image; use as the "before" side), `image` (result), `extras` (module-specific arrays: `lut`, `background`, `gx`/`gy`, `edge_map`, `mask`, `raw_mask`, `cutout`), `histograms.before/after` (256 ints), `metrics`, `warnings`, `meta` (resolved params, engine, `time_ms`, `scale`) |
 | `run_guided(img, intent, params=None, engine="opencv")` | `gate_passed`, `diagnosis`, `branch_a`, `branch_b` (with `path` and `stages[]` holding each intermediate image), `verdict` (`recommended` / `mixed` / `no_benefit` / `not_needed` plus the `checks` that decided it) |
 | `auto_enhance(img, engine="opencv")` | `image`, `steps[]` (module, params, reason), `diagnosis_before/after`, `histograms` |
-| `diagnose(img)` | `metrics` (mean, clipping, std, range, noise σ, impulse density, illumination U, Otsu η, sharpness) and `findings[]` (`code`, `severity`, `value`, `threshold`, `message`) |
+| `diagnose(img)` | `metrics` (mean, clipping, std, range, noise σ, impulse density, half-scale noise σ and speck density, illumination U, Otsu η, sharpness) and `findings[]` (`code`, `severity`, `value`, `threshold`, `message`; noise findings also `scale` = `pixel` / `enlarged`, specks `median_ksize`) |
 | `compare_compression(img, keep_percent=10, engine="opencv")` | `dct`, `hadamard` (run_module-style results with `coef_before`, `coef_after`, `kept_mask`, `error_map`), `rd_curve` (PSNR/SSIM at 0.5–50 %), `energy_curve` (40 points), `curve_scale`, `summary` (`winner`, `psnr_margin_db`) |
 | `degradation_sweep(img, intent, params=None, engine="opencv")` | `axis` (illumination / impulse / gaussian, chosen from the diagnosis), `metric` (IoU or Edge F1), `points[{level, x, direct, guided, gate_fired}]`, `user_point_index`, `reference_note`, `sweep_scale` |
 
@@ -103,7 +103,7 @@ ivp_pipeline/
   auto.py            one-click enhance
   metrics.py         noise σ (Immerkær), impulse density, U_bg, IoU/Dice, edge F1, PSNR, SSIM (OpenCV box filter)
   synthetic.py       test scenes with exact masks + controlled degradations
-tests/               268 tests; every NumPy algorithm is checked against OpenCV / scikit-image / SciPy
+tests/               294 tests; every NumPy algorithm is checked against OpenCV / scikit-image / SciPy
 experiments/         calibration, benchmark, example figures (outputs in experiments/results/),
                      generate_synthetic_dataset.py and run_e2e_tests.py (use <repo>/dataset, git-ignored)
 ```
@@ -140,6 +140,17 @@ These came out of testing and the benchmark. The spec's §10 table should be upd
    is never filled. Otsu masks are treated as 8-connected.
 10. **Adaptive region growing re-tests rejected pixels.** The region mean keeps moving, so a pixel rejected
    early may qualify later; a pixel is marked visited only when it is accepted.
+11. **Enlarged noise (screenshots) is measured at half scale.** A screenshot of a noisy web image is usually
+   enlarged by the browser or display scaling, which smears each grain / speck over 2–3 px: the pixel-scale
+   tests then saw *nothing* (0 of 68 noisy screenshots with grain, 0 of 102 with specks). The diagnosis now
+   also measures a half-scale copy (every 2nd pixel, no averaging): **specks** = pixels that differ from their
+   3×3 median by > 50 and form isolated groups of ≤ 2 px (no pure black/white needed; the size test keeps text
+   strokes out), found when > 2.3 % (and pixel σ < 10, so heavy grain is not mistaken for specks); **grain** =
+   half-scale σ > 5 and > 3.5 × the pixel σ (fine detail raises both together, enlarged noise only the
+   half-scale one). Enlarged specks get a 5×5 median (7×7 above 5 %), enlarged grain a Gaussian σ 1.5, in Auto
+   Fix, guided mode and the Health card's fix buttons. Calibration (`calibrate_gate.py`, 391 images incl. 204
+   screenshot-like ones): recall 100 % for both, the only new false alarms on grass/gravel textures, which
+   already fooled the pixel tests. `experiments/noise_scales_study.py` has the per-scale distributions.
 
 ## Compression (transform coding, lab DCT / Walsh–Hadamard)
 

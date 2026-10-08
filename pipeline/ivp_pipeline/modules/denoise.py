@@ -30,6 +30,9 @@ def run(img: np.ndarray, p: dict, engine: str):
         "noise_sigma_after": round(Q.noise_sigma(g1), 2),
         "impulse_density_before": round(Q.impulse_density(g0), 5),
         "impulse_density_after": round(Q.impulse_density(g1), 5),
+        # specks enlarged by resizing (screenshots) are only visible at half scale
+        "speck_density_coarse_before": round(Q.speck_density(Q.half_scale(g0)), 5),
+        "speck_density_coarse_after": round(Q.speck_density(Q.half_scale(g1)), 5),
     }
     if p["filter_type"] == "gaussian":
         metrics["kernel_size_used"] = F.gaussian_ksize(float(p["sigma"]))

@@ -34,11 +34,12 @@ function canvasToBlob(canvas, type = "image/png", quality) {
  * Render's free tier, 512 MB RAM), larger photos are shrunk here first. The shrink uses NEAREST-NEIGHBOUR
  * sampling (imageSmoothingEnabled = false): every output pixel is a copy of one input pixel,
  * so salt-and-pepper specks stay specks and their density is preserved. (The default bilinear
- * smoothing would blend them into their neighbours and hide the defect.) The shrunk image is
- * sent as PNG, which is lossless.
+ * smoothing would blend them into their neighbours and hide the defect.) A shrunk JPEG is sent as a
+ * JPEG (quality 95), anything else as PNG: re-saving a photo as PNG would make the file several times
+ * BIGGER, which defeats the purpose on a server with an upload limit.
  *
  * PNG/JPEG/WebP/BMP files within the limit are uploaded unchanged; other formats are re-encoded
- * to PNG at full size.
+ * to PNG at full size. The caller checks the result against the server's limits (limitProblem).
  * Returns { file, url, width, height, name, resized, originalSize } where width/height are the
  * dimensions of the UPLOADED image.
  */
@@ -55,6 +56,7 @@ export async function prepareImage(blob, name = "image.png") {
   const reencode = resized || !UPLOAD_AS_IS.includes(blob.type);
 
   let out = blob;
+  let ext = null;
   if (reencode) {
     const canvas = document.createElement("canvas");
     canvas.width = width;
@@ -62,26 +64,50 @@ export async function prepareImage(blob, name = "image.png") {
     const ctx = canvas.getContext("2d");
     ctx.imageSmoothingEnabled = false;      // nearest-neighbour: keeps isolated specks intact
     ctx.drawImage(bmp, 0, 0, width, height);
-    out = await canvasToBlob(canvas, "image/png");
+    const asJpeg = resized && blob.type === "image/jpeg";
+    out = await canvasToBlob(canvas, asJpeg ? "image/jpeg" : "image/png", asJpeg ? 0.95 : undefined);
+    ext = asJpeg ? "jpg" : "png";
   }
   bmp.close?.();
   const base = name.replace(/\.[^.]+$/, "") || "image";
-  const file = new File([out], reencode ? `${base}.png` : name, { type: out.type });
+  const file = new File([out], ext ? `${base}.${ext}` : name, { type: out.type });
   return { file, url: URL.createObjectURL(file), width, height, name: base, resized, originalSize: [w0, h0] };
 }
 
-export async function dataUrlToFile(dataUrl, name) {
-  const blob = await (await fetch(dataUrl)).blob();
-  return new File([blob], name, { type: blob.type });
-}
-
-export function download(url, filename) {
+/** Save a URL or a Blob/File under `filename`. */
+export function download(urlOrBlob, filename) {
+  const isBlob = typeof urlOrBlob !== "string";
+  const url = isBlob ? URL.createObjectURL(urlOrBlob) : urlOrBlob;
   const a = document.createElement("a");
   a.href = url;
   a.download = filename;
   document.body.appendChild(a);
   a.click();
   a.remove();
+  if (isBlob) setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
+
+/** The server's limits as the dashboard shows them, e.g. "4.2 MB · 25 MP". */
+export function limitsText(limits) {
+  if (!limits) return "";
+  return `${formatMB(limits.max_upload_bytes)} · ${limits.max_pixels / 1e6} MP`;
+}
+
+const formatMB = (n) => `${(n / 1024 / 1024).toFixed(1)} MB`;
+
+/** Why a file cannot be uploaded (over the server's file-size or pixel limit), or null if it is fine.
+ *  Checked in the browser so the user gets a clear message instead of a failed upload. */
+export function limitProblem(limits, { bytes, width, height }) {
+  if (!limits) return null;
+  if (bytes > limits.max_upload_bytes) {
+    return `This file is ${formatMB(bytes)}; the limit is ${formatMB(limits.max_upload_bytes)}. ` +
+      "Save it as a JPEG or reduce its size, then try again.";
+  }
+  if (width * height > limits.max_pixels) {
+    return `This image is ${width} × ${height} (${(width * height / 1e6).toFixed(1)} MP); the limit is ` +
+      `${limits.max_pixels / 1e6} MP. Reduce its size, then try again.`;
+  }
+  return null;
 }
 
 /** 256-bin luminance histogram computed in the browser (used before the first server result). */
@@ -102,4 +128,3 @@ export async function lumaHistogram(url) {
   return h;
 }
 
-export const extFor =(dataUrl) => (dataUrl?.startsWith("data:image/jpeg") ? "jpg" : "png");

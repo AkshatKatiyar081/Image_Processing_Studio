@@ -13,6 +13,7 @@ from __future__ import annotations
 import csv
 import os
 
+import cv2
 import numpy as np
 
 from common import RESULTS, natural_images, synthetic_scenes, texture_images
@@ -20,6 +21,29 @@ from common import RESULTS, natural_images, synthetic_scenes, texture_images
 from ivp_pipeline import config as C
 from ivp_pipeline import metrics as Q
 from ivp_pipeline import synthetic as S
+from ivp_pipeline.diagnostics import gaussian_noise, impulse_noise, measure
+
+
+def screenshot(img, factor):
+    """What a screenshot of a noisy web image looks like: saved by the site as JPEG 75, then shown enlarged."""
+    web = cv2.imdecode(cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 75])[1], cv2.IMREAD_GRAYSCALE)
+    return cv2.resize(web, (round(img.shape[1] * factor), round(img.shape[0] * factor)), interpolation=cv2.INTER_LINEAR)
+
+
+def build_screenshot_samples():
+    """Clean and noisy images captured as screenshots (enlarged 1.5x and 2x), for the full noise detectors."""
+    clean = list(natural_images().items()) + list(texture_images().items())
+    clean += [(n, im) for n, im, _ in synthetic_scenes(6, texture=4.0)]
+    out = []
+    for name, im in clean:
+        for f in (1.5, 2.0):
+            tag = f"shot{f:g}x"
+            out.append((name, f"clean_{tag}", screenshot(im, f)))
+            for sg in (15, 25):
+                out.append((name, f"gauss{sg}_{tag}", screenshot(S.gaussian_noise(im, sg, seed=1), f)))
+            for d in (0.05, 0.10, 0.20):
+                out.append((name, f"sp{int(d * 100)}_{tag}", screenshot(S.salt_pepper(im, d, seed=2), f)))
+    return out
 
 
 def build_samples():
@@ -40,6 +64,8 @@ def build_samples():
 
 def label(deg: str, detector: str):
     """True / False = positive / negative; None = excluded (the defect this detector can't be judged on)."""
+    if detector in ("grain_any_scale", "specks_any_scale"):
+        return label(deg, "noise_sigma" if detector == "grain_any_scale" else "impulse_density")
     if detector == "noise_sigma":
         if deg.startswith("gauss"):
             return True
@@ -52,6 +78,10 @@ def label(deg: str, detector: str):
 
 
 def score(detector: str, img: np.ndarray) -> float:
+    if detector == "grain_any_scale":            # the full rule used by the Health card (pixel OR enlarged)
+        return float(gaussian_noise(measure(img)) is not None)
+    if detector == "specks_any_scale":
+        return float(impulse_noise(measure(img)) is not None)
     if detector == "noise_sigma":
         return Q.noise_sigma(img)
     if detector == "impulse_density":
@@ -113,6 +143,39 @@ def main():
             md.append(f"Misses at current threshold: {', '.join(fns[:20])}{' …' if len(fns) > 20 else ''}")
         md.append("")
 
+    # The complete noise rules (pixel scale OR enlarged at half scale) on normal images AND on screenshots.
+    shots = build_screenshot_samples()
+    md += ["## Full noise rules, including screenshots", "",
+           f"`grain_any_scale` and `specks_any_scale` are the rules the Health card uses (diagnostics.gaussian_noise / "
+           f"impulse_noise): the pixel-scale tests above OR the half-scale tests for ENLARGED noise. Evaluated on the "
+           f"{len(samples)} images above plus {len(shots)} screenshot-like images (saved as JPEG 75, then shown 1.5x or "
+           "2x larger; clean, Gaussian σ 15/25, salt & pepper 5/10/20 %).", "",
+           "| Rule | Images | TP | FP | FN | TN | Precision | Recall | F1 |", "|---|---|---|---|---|---|---|---|---|"]
+    for det in ("grain_any_scale", "specks_any_scale"):
+        for setname, data in (("normal", samples), ("screenshots", shots)):
+            vals, labs, srcs = [], [], []
+            for src, deg, im in data:
+                lab = label(deg, det)
+                if lab is None:
+                    continue
+                vals.append(score(det, im)); labs.append(lab); srcs.append((src, deg))
+            c = confusion(np.array(vals), np.array(labs), 0.5)
+            md.append(f"| `{det}` | {setname} ({len(vals)}) | {c['tp']} | {c['fp']} | {c['fn']} | {c['tn']} | "
+                      f"{c['precision']:.3f} | {c['recall']:.3f} | {c['f1']:.3f} |")
+            fps = [f"{s}/{d}" for (s, d), v, l in zip(srcs, vals, labs) if v > 0.5 and not l]
+            if fps:
+                md.append(f"|  | false alarms: {', '.join(fps[:12])}{' …' if len(fps) > 12 else ''} | | | | | | | |")
+    # the same screenshots with the pixel-scale tests only (the rules before the half-scale tests existed)
+    old = {"grain": [], "specks": []}
+    for _, deg, im in shots:
+        if deg.startswith("gauss"):
+            old["grain"].append(Q.noise_sigma(im) > C.NOISE_MODERATE)
+        elif deg.startswith("sp"):
+            old["specks"].append(Q.impulse_density(im) > C.IMPULSE_DENSITY)
+    md += ["", f"With the pixel-scale tests alone, the same noisy screenshots are caught only "
+               f"{sum(old['grain'])}/{len(old['grain'])} times (grain) and {sum(old['specks'])}/{len(old['specks'])} "
+               "times (specks).", ""]
+
     md += ["## Interpretation", "",
            "* **Noise σ** separates cleanly; the only false alarms come from the *grass* texture, whose "
            "fine random detail is statistically similar to noise (a known limit of any single-image estimator).",
@@ -123,11 +186,14 @@ def main():
            "are counted as false alarms only because their clean versions are labelled negative — both are "
            "textbook examples of genuinely uneven illumination. The threshold is kept at 0.15 on purpose: "
            "verify-after-fix turns false alarms into a harmless `no_benefit` verdict, while a miss would hide "
-           "the largest improvement the pipeline can make.", ""]
-    with open(os.path.join(RESULTS, "calibration.csv"), "w", newline="") as f:
+           "the largest improvement the pipeline can make.",
+           "* **Screenshots** (enlarged noise) are caught by the half-scale tests: specks smeared over 2–3 px "
+           "and grain that is smooth between neighbouring pixels are pixel-sized again at half scale. Their "
+           "remaining false alarms are the same grass/gravel textures that already fool the pixel-scale tests.", ""]
+    with open(os.path.join(RESULTS, "calibration.csv"), "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=list(rows[0]))
         w.writeheader(); w.writerows(rows)
-    with open(os.path.join(RESULTS, "calibration.md"), "w") as f:
+    with open(os.path.join(RESULTS, "calibration.md"), "w", encoding="utf-8") as f:
         f.write("\n".join(md))
     print("\n".join(md))
 

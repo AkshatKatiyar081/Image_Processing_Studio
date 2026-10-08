@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { Image as ImageIcon, Upload, Undo2 } from "lucide-react";
 import { api, apiUrl } from "../lib/api.js";
-import { Button, Card, cx } from "./ui.jsx";
+import { limitsText } from "../lib/image.js";
+import { Button, Card, ErrorBanner, cx } from "./ui.jsx";
 
 /** Upload area + sample gallery. When an image is loaded it collapses to a compact summary. */
-export default function ImagePanel({ image, onFile, onReset, canUndo, onUndo, loading }) {
+export default function ImagePanel({ image, onFile, onReset, canUndo, onUndo, loading, limits, error, onCloseError }) {
   const [samples, setSamples] = useState([]);
   const [drag, setDrag] = useState(false);
   const [open, setOpen] = useState(!image);
@@ -12,6 +13,7 @@ export default function ImagePanel({ image, onFile, onReset, canUndo, onUndo, lo
 
   useEffect(() => { api.samples().then(setSamples).catch(() => {}); }, []);
   useEffect(() => { setOpen(!image); }, [image?.id]);
+  useEffect(() => { if (error) setOpen(true); }, [error]);   // e.g. a pasted file was refused: show why
 
   // Paste an image from the clipboard (Ctrl/Cmd+V) anywhere on the page
   useEffect(() => {
@@ -71,9 +73,12 @@ export default function ImagePanel({ image, onFile, onReset, canUndo, onUndo, lo
             <Upload className="h-6 w-6 text-slate-400" />
             <div className="text-sm font-medium text-slate-700">{loading ? "Loading…" : "Drop an image or click to browse"}</div>
             <div className="text-xs text-slate-500">PNG, JPEG, WebP, BMP · you can also paste</div>
+            {limits && <div className="text-xs font-medium text-slate-600">Max {limitsText(limits)}</div>}
             <input ref={input} type="file" accept="image/*" className="hidden"
                    onChange={(e) => { const f = e.target.files?.[0]; if (f) onFile(f, f.name); e.target.value = ""; }} />
           </div>
+          {/* right under the drop zone, so a refused file (e.g. over the size limit) is explained where the user looks */}
+          <ErrorBanner error={error} onClose={onCloseError} />
           {samples.length > 0 && (
             <div>
               <div className="mb-1.5 text-xs font-semibold text-slate-500">Or try a sample</div>

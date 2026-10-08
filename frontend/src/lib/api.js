@@ -38,6 +38,26 @@ async function request(path, options = {}) {
   return handle(res);
 }
 
+/** POST that answers with a FILE (the full-quality result), not JSON.
+ *  Returns { file: Blob, format: "PNG" | "JPEG" | …, quality, note } — note says why a JPEG was sent
+ *  instead of PNG (the PNG was over the server's download limit), or is "". */
+async function requestFile(path, options = {}) {
+  let res;
+  try {
+    res = await fetch(apiUrl(path), options);
+  } catch (e) {
+    if (e.name === "AbortError") throw e;
+    throw new ApiError("Can't reach the server. Check your connection or wait for it to wake up.", "NETWORK");
+  }
+  if (!res.ok) return handle(res);   // throws the server's error message
+  return {
+    file: await res.blob(),
+    format: res.headers.get("X-IVP-Format") || "PNG",
+    quality: Number(res.headers.get("X-IVP-Quality")) || null,
+    note: decodeURIComponent(res.headers.get("X-IVP-Note") || ""),
+  };
+}
+
 function form(file, fields = {}) {
   const fd = new FormData();
   fd.append("file", file, file.name || "image.png");
@@ -68,6 +88,24 @@ export const api = {
       method: "POST", body: form(file, { keep_percent: keepPercent, jpeg_quality: jpegQuality ?? "auto", engine }), signal,
     }),
 };
+
+/** Full-quality results (JSON replies only carry previews). Each runs the same operation again on the
+ *  server and returns { file, format, quality, note } — used by Download and "Keep editing this result". */
+export const files = {
+  process: (file, module, params, engine) =>
+    requestFile("/api/process/file", { method: "POST", body: form(file, { module, params, engine }) }),
+  compress: (file, params, engine) =>
+    requestFile("/api/compress/file", { method: "POST", body: form(file, { params, engine }) }),
+  auto: (file, engine) => requestFile("/api/auto/file", { method: "POST", body: form(file, { engine }) }),
+  guided: (file, intent, params, engine, branch, layer = "image") =>
+    requestFile("/api/guided/file", { method: "POST", body: form(file, { intent, params, engine, branch, layer }) }),
+  compareCompression: (file, method, keepPercent, jpegQuality, engine) =>
+    requestFile("/api/compare-compression/file", {
+      method: "POST", body: form(file, { method, keep_percent: keepPercent, jpeg_quality: jpegQuality ?? "auto", engine }),
+    }),
+};
+
+export const EXTENSION = { PNG: "png", JPEG: "jpg", WEBP: "webp" };
 
 /** Ping /api/health until the server answers (Render's free tier sleeps and needs ~30-60 s to wake). */
 export async function waitForServer(onAttempt, { tries = 40, delayMs = 3000 } = {}) {

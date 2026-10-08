@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { GitCompare, SlidersHorizontal, WandSparkles } from "lucide-react";
 import { api, waitForServer } from "./lib/api.js";
-import { dataUrlToFile, lumaHistogram, prepareImage } from "./lib/image.js";
+import { limitProblem, lumaHistogram, prepareImage } from "./lib/image.js";
 import AutoTab from "./components/AutoTab.jsx";
 import CompareTab from "./components/CompareTab.jsx";
 import HealthCard from "./components/HealthCard.jsx";
 import ImagePanel from "./components/ImagePanel.jsx";
 import ToolsTab from "./components/ToolsTab.jsx";
-import { Button, ErrorBanner, cx } from "./components/ui.jsx";
+import { Button, cx } from "./components/ui.jsx";
 
 const TABS = [
   { id: "tools", label: "Tools", icon: SlidersHorizontal },
@@ -89,6 +89,7 @@ export default function App() {
   const [tab, setTab] = useState("tools");
   const [server, setServer] = useState("connecting");
   const [schemas, setSchemas] = useState(null);
+  const [limits, setLimits] = useState(null);      // the server's upload / pixel limits (from /api/health)
   const [image, setImage] = useState(null);
   const [original, setOriginal] = useState(null);
   const [history, setHistory] = useState([]);
@@ -102,7 +103,8 @@ export default function App() {
   const connect = useCallback(async () => {
     setServer("connecting");
     try {
-      await waitForServer();
+      const h = await waitForServer();
+      setLimits(h.limits || null);
       setServer("online");
       setSchemas(await api.modules());
     } catch {
@@ -131,6 +133,13 @@ export default function App() {
     setLoading(true);
     try {
       const prepared = await prepareImage(file, name);
+      // refuse files over the server's limits here, with a clear message, instead of failing on upload
+      const problem = limitProblem(limits, { bytes: prepared.file.size, width: prepared.width, height: prepared.height });
+      if (problem) {
+        URL.revokeObjectURL(prepared.url);
+        setLoadError(problem);
+        return;
+      }
       const img = { ...prepared, id: nextId++, generation: 0 };
       setImage(img);
       setOriginal(img);
@@ -140,13 +149,15 @@ export default function App() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [limits]);
 
-  const chain = useCallback(async (dataUrl, label) => {
+  /** "Keep editing this result": `blob` is the FULL-QUALITY result file fetched from the server
+   *  (never a preview), so chained edits do not lose quality. */
+  const chain = useCallback(async (blob, label) => {
     const base = original?.name || "image";
-    const ext = { "image/jpeg": "jpg", "image/webp": "webp" }[dataUrl.slice(5, dataUrl.indexOf(";"))] || "png";
-    const file = await dataUrlToFile(dataUrl, `${base}_edited.${ext}`);
-    const prepared = await prepareImage(file, `${base}_edited.${ext}`);
+    const ext = { "image/jpeg": "jpg", "image/webp": "webp" }[blob.type] || "png";
+    const file = new File([blob], `${base}_edited.${ext}`, { type: blob.type });
+    const prepared = await prepareImage(file, file.name);
     setHistory((h) => [...h, image]);
     setImage({ ...prepared, name: `${base} + ${label}`, id: nextId++, generation: (image?.generation || 0) + 1 });
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -165,8 +176,8 @@ export default function App() {
 
   const left = (
     <>
-      <ImagePanel image={image} onFile={loadFile} onReset={reset} canUndo={history.length > 0} onUndo={undo} loading={loading} />
-      <ErrorBanner error={loadError} onClose={() => setLoadError(null)} />
+      <ImagePanel image={image} onFile={loadFile} onReset={reset} canUndo={history.length > 0} onUndo={undo} loading={loading}
+                  limits={limits} error={loadError} onCloseError={() => setLoadError(null)} />
       <HealthCard health={health.data} loading={health.loading} error={health.error} onFix={onFix} />
     </>
   );

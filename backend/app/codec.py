@@ -116,6 +116,40 @@ def encode(img: np.ndarray, fmt: str = "png", quality: int = 90) -> str:
     return f"data:{mime};base64,{base64.b64encode(out.tobytes()).decode('ascii')}"
 
 
+# ------------------------------------------------------------------ previews
+# Replies carry PREVIEWS, not full-resolution images: a screen cannot show more than ~1280 px anyway, and a
+# hosted function (Vercel) refuses replies over 4.5 MB. The pipeline still works at full resolution; the
+# full-quality result is fetched separately (see full_file) only for Download / Keep editing.
+PREVIEW_SIDE = int(os.getenv("PREVIEW_SIDE", "1280"))
+MAP_SIDE = 512            # coefficient maps / kept masks: small diagrams
+PREVIEW_QUALITY = 90
+BINARY_EXTRAS = ("mask", "raw_mask", "edge_map", "kept_mask")   # 0/255 images: PNG is tiny and exact
+MAP_EXTRAS = ("coef_before", "coef_after", "kept_mask")
+ERROR_MAP_QUALITY = 80    # amplified heat maps of noise-like errors: JPEG 80 shows the same picture at 1/3 the size
+
+
+def is_binary(img: np.ndarray) -> bool:
+    return img.ndim == 2 and not np.any((img != 0) & (img != 255))
+
+
+def shrink(img: np.ndarray, side: int) -> np.ndarray:
+    """Copy at most `side` px on the longer edge. Binary images use nearest-neighbour (stay 0/255)."""
+    h, w = img.shape[:2]
+    if max(h, w) <= side:
+        return img
+    s = side / max(h, w)
+    interp = cv2.INTER_NEAREST if is_binary(img) else cv2.INTER_AREA
+    return cv2.resize(img, (max(1, round(w * s)), max(1, round(h * s))), interpolation=interp)
+
+
+def preview(img: np.ndarray, side: int | None = None, quality: int = PREVIEW_QUALITY) -> str:
+    """Data URL of a display copy: binary images as PNG, transparent ones as PNG, everything else as JPEG."""
+    small = shrink(img, side or PREVIEW_SIDE)
+    if is_binary(small) or (small.ndim == 3 and small.shape[2] == 4):
+        return encode(small, "png")
+    return encode(small, "jpeg", quality)
+
+
 def encode_png_bytes(img: np.ndarray) -> bytes:
     if img.ndim == 3:
         img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
@@ -140,16 +174,22 @@ def jsonable(x):
     return x
 
 
-def module_result(res: dict, image_fmt: str = "png", include_input: bool = False) -> dict:
-    """Serialise a run_module-style result. Float arrays (gx, gy) are dropped: too big, not displayable."""
+def module_result(res: dict, quality: int = PREVIEW_QUALITY, drop: tuple = (), side: int | None = None) -> dict:
+    """Serialise a run_module-style result with PREVIEW images (see preview()), at most `side` px
+    (default PREVIEW_SIDE). Float arrays (gx, gy) are dropped (too big, not displayable), and so are the
+    extras named in `drop`.
+    """
     extras = {}
     for k, v in res.get("extras", {}).items():
+        if k in drop:
+            continue
         if k in IMAGE_EXTRAS and isinstance(v, np.ndarray):
-            extras[k] = encode(v, "png")
+            q = min(quality, ERROR_MAP_QUALITY) if k == "error_map" else quality
+            extras[k] = preview(v, MAP_SIDE if k in MAP_EXTRAS else side, q)
         elif k == "lut":
             extras[k] = jsonable(v)
     out = {
-        "image": encode(res["image"], image_fmt),
+        "image": preview(res["image"], side, quality),
         "extras": extras,
         "histograms": res.get("histograms"),
         "metrics": jsonable(res.get("metrics", {})),
@@ -158,6 +198,4 @@ def module_result(res: dict, image_fmt: str = "png", include_input: bool = False
     }
     if "path" in res:
         out["path"] = res["path"]
-    if include_input and "input" in res:
-        out["input"] = encode(res["input"], "png")
     return out

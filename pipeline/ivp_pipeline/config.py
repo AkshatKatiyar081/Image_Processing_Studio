@@ -27,6 +27,24 @@ IMPULSE_DENSITY = 0.0075        # 0.75 % — calibrated (was 0.5 %; best F1 0.99
 # ILLUMINATION_U is deliberately kept below its best-F1 value (~0.25): a false alarm only costs
 # an extra Branch B that verify-after-fix labels "no_benefit", while a miss hides the biggest win.
 IMPULSE_HEAVY = 0.10            # use a 5x5 median above this
+
+# Enlarged noise (typical of SCREENSHOTS: the browser or display scaling enlarged a noisy image, smearing each
+# grain / speck over 2–3 pixels, so the pixel-scale measures above miss it). The same measures are taken on a
+# half-scale copy (every 2nd pixel), where the grains are pixel-sized again. Calibrated on 1153 images
+# (experiments/noise_scales_study.py; calibrate_gate.py has the confusion matrices):
+#   specks: a pixel differing from its 3x3 median by > IMPULSE_MEDIAN_DIFF that forms a tiny isolated group
+#   (≤ SPECK_MAX_AREA px) — no pure black/white needed, since enlarging softens the specks to grey.
+SPECK_MAX_AREA = 2
+SPECK_COARSE_DENSITY = 0.023    # half-scale speck density above this = enlarged salt & pepper
+SPECK_COARSE_MAX_SIGMA = 10.0   # ... unless the image has heavy pixel-scale grain (its tails look like specks)
+SPECK_COARSE_HEAVY = 0.05       # 7x7 median instead of 5x5 above this
+#   grain: noise σ of the half-scale copy above NOISE_COARSE_MIN AND above NOISE_COARSE_RATIO x the pixel-scale σ
+#   (enlarged noise is smooth between neighbouring pixels but random again at half scale; fine detail and
+#   textures raise both values together, so the ratio keeps them out).
+NOISE_COARSE_MIN = 5.0
+NOISE_COARSE_RATIO = 3.5
+COARSE_MEDIAN_KSIZE, COARSE_MEDIAN_KSIZE_HEAVY = 5, 7
+COARSE_GAUSS_SIGMA = 1.5        # enlarged grain is 2–3 px wide: sigma 1.0 leaves part of it
 ILLUMINATION_U = 0.15
 LOW_ETA = 0.70
 

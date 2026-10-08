@@ -12,7 +12,7 @@ import numpy as np
 from . import config as C
 from . import metrics as Q
 from . import registry
-from .diagnostics import diagnose_prepared
+from .diagnostics import diagnose_prepared, gaussian_noise, impulse_noise
 from .errors import PipelineError
 from .modules.sharpen_edges import edge_map_from
 from .pipeline import execute, step
@@ -62,11 +62,13 @@ def plan_and_condition(img: np.ndarray, intent: str, engine: str, target: dict |
                        "reason": reason, "image": cur})
         d = diagnose_prepared(cur)["metrics"]  # re-diagnose: an earlier fix may solve later problems
 
-    # 1) impulse noise -> median
-    if intent in ("segment", "edges", "sharpen") and d["impulse_density"] > C.IMPULSE_DENSITY:
-        k = 5 if d["impulse_density"] > C.IMPULSE_HEAVY else 3
-        add("denoise", {"filter_type": "median", "kernel_size": k}, "IMPULSE_NOISE",
-            f"impulse density {d['impulse_density']:.2%} > {C.IMPULSE_DENSITY:.1%}")
+    # 1) impulse noise -> median (pixel specks: 3x3 / 5x5; enlarged specks from screenshots: 5x5 / 7x7)
+    imp = impulse_noise(d)
+    if intent in ("segment", "edges", "sharpen") and imp:
+        k = imp["median_ksize"]
+        reason = (f"impulse density {d['impulse_density']:.2%} > {C.IMPULSE_DENSITY:.1%}" if imp["scale"] == "pixel"
+                  else f"enlarged specks {imp['value']:.2%} at half scale > {C.SPECK_COARSE_DENSITY:.1%}")
+        add("denoise", {"filter_type": "median", "kernel_size": k}, "IMPULSE_NOISE", reason)
 
     # 2) Gaussian noise -> Gaussian smoothing
     if intent == "edges":
@@ -74,6 +76,8 @@ def plan_and_condition(img: np.ndarray, intent: str, engine: str, target: dict |
     else:
         limit = C.NOISE_GATE[intent]
     noisy = d["noise_sigma"] > limit
+    grain = gaussian_noise(d)
+    coarse = not noisy and grain is not None and grain["scale"] == "enlarged"   # enlarged grain (screenshots)
     # HE amplifies noise wherever the CDF is steep, regardless of overall
     # brightness.  The previous guard (only pre-smooth dark images) was too
     # restrictive — a bright but noisy image would skip the Gaussian step and
@@ -83,6 +87,9 @@ def plan_and_condition(img: np.ndarray, intent: str, engine: str, target: dict |
         add("denoise", {"filter_type": "gaussian", "sigma": sigma}, "GAUSSIAN_NOISE",
             f"noise σ ≈ {d['noise_sigma']:.1f} > {limit:g}"
             + (" in a dark image" if intent == "equalize" and d["mean"] < C.DARK_MEAN else ""))
+    elif coarse:
+        add("denoise", {"filter_type": "gaussian", "sigma": grain["sigma"]}, "GAUSSIAN_NOISE",
+            f"coarse grain σ ≈ {grain['value']:.1f} at half scale (enlarged noise)")
 
     # 3) uneven illumination -> morphological flattening (segmentation only)
     if intent == "segment" and d["illumination_u"] > C.ILLUMINATION_U:

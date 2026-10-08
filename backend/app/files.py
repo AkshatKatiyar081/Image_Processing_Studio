@@ -12,7 +12,10 @@ import io
 import numpy as np
 from PIL import Image, JpegImagePlugin
 
+from ivp_pipeline import PipelineError
 from ivp_pipeline.core.jpeg import estimate_quality
+
+from .limits import mb
 
 SUBSAMPLING_NAMES = {0: "4:4:4", 1: "4:2:2", 2: "4:2:0"}
 EXTENSIONS = {"JPEG": "jpg", "PNG": "png", "WEBP": "webp"}
@@ -89,6 +92,33 @@ def save_like(img: np.ndarray, original: bytes, fmt: str, quality: int | None = 
     else:
         pil.save(buf, "PNG", optimize=True, **meta)
     return buf.getvalue()
+
+
+FALLBACK_QUALITIES = (95, 90, 85, 80)
+
+
+def fit_file(img: np.ndarray, original: bytes, limit: int, fmt: str = "PNG", quality: int | None = None,
+             subsampling: str | None = None) -> dict:
+    """Encode img as fmt; if that is over `limit` bytes, fall back to JPEG 95 → 90 → 85 → 80.
+
+    Returns {"bytes", "format", "quality", "subsampling", "note"}; note is None when no fallback was needed.
+    Raises PipelineError("RESULT_TOO_LARGE") if even JPEG 80 does not fit.
+    """
+    blob = save_like(img, original, fmt, quality, subsampling)
+    if not limit or len(blob) <= limit:
+        return {"bytes": blob, "format": fmt, "quality": quality, "subsampling": subsampling, "note": None}
+    first = len(blob)
+    for q in FALLBACK_QUALITIES:
+        if fmt == "JPEG" and quality is not None and q >= quality:
+            continue                                   # never "fall back" to a higher quality
+        smaller = save_like(img, original, "JPEG", q, "4:4:4" if q >= 90 else "4:2:0")
+        if len(smaller) <= limit:
+            return {"bytes": smaller, "format": "JPEG", "quality": q, "subsampling": "4:4:4" if q >= 90 else "4:2:0",
+                    "note": f"Saved as JPEG (quality {q}) because the {fmt} file would be {mb(first)}, "
+                            f"over the {mb(limit)} download limit."}
+    raise PipelineError("RESULT_TOO_LARGE",
+                        f"The result is too large to download ({mb(first)}; limit {mb(limit)}). "
+                        "Use a smaller image.")
 
 
 def output_plan(info: dict, params: dict) -> dict:

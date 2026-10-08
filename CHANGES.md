@@ -335,6 +335,43 @@ Done in the app's built-in browser against `uvicorn` (:8000) and `npm run dev` (
 * Checked in the browser at 1440 × 900 (wheel over the left column scrolls only the left, over the right only the
   right, page never scrolls) and at 390 px (normal page, no sideways overflow); no console errors.
 
+## Follow-up: Vercel size limits, full-quality downloads, noise in screenshots (2026-10-08)
+
+**Problem 1 — replies too big for Vercel (4.5 MB per request and per reply).** Measured on a 12 MP photo
+(flower.jpg, 3072 × 2304) at full resolution, the replies were 6–24 MB (Tools, Auto Fix), 59 MB (Compare →
+Segment) and 113 MB (Compare → Compression), because every image went back as a full-size base64 PNG.
+
+* Replies now carry **previews**: ≤ 1280 px JPEG 90 for photos, PNG for 0/255 masks and edge maps, 512 px
+  coefficient maps, error maps at JPEG 80; Compare → Compression at ≤ 1024 px JPEG 92. Removed the duplicate
+  `input` image and the unused full-size RGBA `cutout`. Measured again on the same photo: Tools 0.7 MB,
+  compression 1.1–1.2 MB, Auto Fix 0.6 MB, Compare → Segment 2.2 MB, Edges 0.2 MB, Compression 2.6 MB.
+* **Full-quality results are separate files** (`/api/process/file`, `/auto/file`, `/guided/file`,
+  `/compare-compression/file`, `/compress/file`), fetched only for *Download* and *Keep editing this result*,
+  so chained edits never work on a lossy preview. PNG when it fits the download limit, otherwise JPEG 95 → 80
+  with a note shown to the user ("Saved as JPEG (quality 95) because the PNG file would be 11.3 MB…").
+  Compare's JPEG-style download is now the real JPEG file the comparison measured.
+* **Limits** in `backend/app/limits.py`: 4.2 MB on Vercel (detected automatically), 15 MB elsewhere; the
+  download limit defaults to the upload limit, so every returned file can be uploaded again. `/api/health`
+  reports them; the upload box shows "Max 4.2 MB · 25 MP" and refuses bigger files with a clear message
+  directly under the drop zone.
+* The browser-side shrink (`VITE_MAX_UPLOAD_SIDE`) keeps a JPEG as JPEG 95 instead of re-saving it as a PNG
+  several times bigger; the README's "set it to 2048" advice for Vercel was wrong and is corrected.
+
+**Problem 2 — noise in screenshots was not detected.** A screenshot of a noisy Google image (salt & pepper,
+enlarged by the browser) was reported as healthy: noise σ 1.7, specks 0.02 %. Enlarging smears each speck over
+2–3 px and softens it to grey, so both pixel-scale tests miss it, and Auto Fix even sharpened it. New half-scale
+measures (pipeline README, refinement 11) find it (specks 4.4 %), the fix uses a 5×5 median (3×3 is too
+small), and Auto Fix never sharpens when noise is found at any scale. The Health card names enlarged noise,
+offers the matching filter, and shows "Still looks noisy to you? Remove specks · Smooth grain" when nothing is
+found. New presets: 7×7 median, Gaussian σ 1.5. No sample or dataset image gained a false alarm.
+
+**Tests:** pipeline +26 (`test_noise_scales.py`: enlarged specks/grain found and fixed, clean images and clean
+screenshots of 6 photos stay clean at 1×, 1.5×, 2×); API 47 → 60 (previews, `/file` endpoints and identical
+pixels, JPEG fallback, limits, CORS headers, and a 12 MP photo through every endpoint with every reply
+< 3.5 MB). Checked in the browser with the real photo and screenshot: limits message, previews, downloads,
+chaining, all Compare views. Note: Windows Smart App Control now blocks one scikit-image DLL, so
+`tests/test_core_vs_opencv.py` (68 tests) cannot be collected on this machine; it is unchanged.
+
 ## Suggested commits
 
 1. `Remove unused root images (Media.jpg, test_salt_pepper.jpg); ignore dataset/; move dataset scripts to pipeline/experiments with relative paths`

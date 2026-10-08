@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowRight, CircleCheck, Download, WandSparkles } from "lucide-react";
-import { api } from "../lib/api.js";
+import { EXTENSION, api, files } from "../lib/api.js";
 import { download } from "../lib/image.js";
 import { FINDINGS, toolById } from "../lib/labels.js";
 import BeforeAfterView, { ViewToggle } from "./BeforeAfterView.jsx";
@@ -18,9 +18,28 @@ export default function AutoTab({ image, left, layout: Layout, beforeHist, onCha
   const [view, setView] = useState("slider");   // "slider" | "side"
   const [running, setRunning] = useState(false);
   const [error, setError] = useState(null);
+  const [saving, setSaving] = useState(null);   // "download" | "chain" while the full-quality file is fetched
+  const [notice, setNotice] = useState(null);
   const ctrl = useRef(null);
 
-  useEffect(() => { setResult(null); setError(null); ctrl.current?.abort(); }, [image?.id]);
+  useEffect(() => { setResult(null); setError(null); setNotice(null); ctrl.current?.abort(); }, [image?.id]);
+
+  /** Download / Keep editing use the FULL-QUALITY result (the reply only has a preview). */
+  const save = async (action) => {
+    setSaving(action);
+    setError(null);
+    setNotice(null);
+    try {
+      const f = await files.auto(image.file, "opencv");
+      if (f.note) setNotice(f.note);
+      if (action === "chain") await onChain(f.file, "Auto Fix");
+      else download(f.file, `${image.name}_autofix.${EXTENSION[f.format] || "png"}`);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSaving(null);
+    }
+  };
 
   const run = async () => {
     ctrl.current?.abort();
@@ -42,11 +61,11 @@ export default function AutoTab({ image, left, layout: Layout, beforeHist, onCha
     <Card title="Auto Fix" icon={WandSparkles}>
       <p className="text-sm text-slate-600">One click: we measure the image, then apply only the fixes it needs, in the right order.</p>
       <ol className="mt-3 space-y-1 text-xs text-slate-500">
-        <li>1. Remove salt & pepper specks (median)</li>
-        <li>2. Smooth strong grain (Gaussian)</li>
+        <li>1. Remove salt & pepper specks (median; a bigger one for enlarged specks, e.g. screenshots)</li>
+        <li>2. Smooth grain (Gaussian), also coarse grain from enlarged images</li>
         <li>3. Fix exposure (auto gamma)</li>
         <li>4. Stretch low contrast</li>
-        <li>5. Mild sharpening, only if the image is clean</li>
+        <li>5. Mild sharpening, only if no noise was found at any scale</li>
       </ol>
       <Button className="mt-4 w-full" size="lg" onClick={run} loading={running} disabled={!image}>
         <WandSparkles className="h-4 w-4" />{image ? "Auto Fix my image" : "Load an image first"}
@@ -63,9 +82,10 @@ export default function AutoTab({ image, left, layout: Layout, beforeHist, onCha
       <div className="space-y-4">
         <Card>
           <div className="space-y-3">
-            <BeforeAfterView view={view} before={result?.input || image.url} after={result?.image} afterLabel="Auto fixed"
+            <BeforeAfterView view={view} before={image.url} after={result?.image} afterLabel="Auto fixed"
                              busy={running} overlay={<Spinner label="Analysing and fixing…" />} />
             <ErrorBanner error={error} onClose={() => setError(null)} />
+            {notice && <p className="rounded-lg bg-sky-50 px-3 py-2 text-xs text-sky-800">{notice}</p>}
             {result && (
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex flex-wrap items-center gap-2">
@@ -73,8 +93,8 @@ export default function AutoTab({ image, left, layout: Layout, beforeHist, onCha
                   <span className="text-xs text-slate-500">{view === "slider" ? "Drag the divider to compare · " : ""}{result.meta.total_ms} ms</span>
                 </div>
                 <div className="flex gap-2">
-                  <Button size="sm" variant="secondary" onClick={() => onChain(result.image, "Auto Fix")}>Keep editing this result</Button>
-                  <Button size="sm" onClick={() => download(result.image, `${image.name}_autofix.png`)}><Download className="h-4 w-4" />Download</Button>
+                  <Button size="sm" variant="secondary" onClick={() => save("chain")} loading={saving === "chain"} disabled={!!saving}>Keep editing this result</Button>
+                  <Button size="sm" onClick={() => save("download")} loading={saving === "download"} disabled={!!saving}><Download className="h-4 w-4" />Download</Button>
                 </div>
               </div>
             )}
@@ -124,6 +144,8 @@ function HealthDelta({ before, after }) {
     ["Contrast σ", (d) => d.metrics.std.toFixed(0)],
     ["Noise σ", (d) => d.metrics.noise_sigma.toFixed(1)],
     ["Specks", (d) => `${(d.metrics.impulse_density * 100).toFixed(2)} %`],
+    // specks enlarged by resizing (screenshots), measured at half scale
+    ["Enlarged specks", (d) => `${((d.metrics.speck_density_coarse ?? 0) * 100).toFixed(2)} %`],
   ];
   const codesAfter = new Set(after.findings.map((f) => f.code));
   const fixed = before.findings.filter((f) => !codesAfter.has(f.code));

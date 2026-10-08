@@ -67,12 +67,15 @@ def test_process_all_modules(module, params):
     assert r.status_code == 200, r.text
     body = r.json()
     header, img = decode_data_url(body["image"])
-    assert header.startswith("data:image/png") and img is not None
+    # previews: binary results (an edge map) as PNG, photos as JPEG
+    expected = "data:image/png" if module == "sharpen_edges" else "data:image/jpeg"
+    assert header.startswith(expected) and img is not None
+    assert "input" not in body                   # the browser already has the input
     assert len(body["histograms"]["before"]) == 256
     assert "gx" not in body["extras"]            # float arrays are not sent
     if module == "segment":
-        _, cut = decode_data_url(body["extras"]["cutout"])
-        assert cut.shape[2] == 4                 # RGBA cut-out
+        assert "cutout" not in body["extras"]    # not shown anywhere; full-size RGBA would be huge
+        assert body["extras"]["mask"].startswith("data:image/png")
 
 
 def test_process_numpy_engine():
@@ -101,10 +104,12 @@ def test_auto():
     assert body["diagnosis_after"]["metrics"]["mean"] > body["diagnosis_before"]["metrics"]["mean"]
 
 
-def test_large_image_returns_input_and_scale():
+def test_large_image_reports_scale_and_sends_a_preview():
     big = cv2.resize(data.camera(), (2048, 2048))
     body = post("/api/process", png(big), module="contrast", params={"mode": "stretch"}).json()
-    assert body["meta"]["scale"] == 0.5 and "input" in body
+    assert body["meta"]["scale"] == 0.5 and "input" not in body
+    _, img = decode_data_url(body["image"])
+    assert max(img.shape[:2]) <= codec.PREVIEW_SIDE
 
 
 @pytest.mark.parametrize("path,form,code", [
@@ -207,9 +212,10 @@ def test_process_compress_rgb(method):
     assert r.status_code == 200, r.text
     body = r.json()
     header, img = decode_data_url(body["image"])
-    assert header.startswith("data:image/png") and img.shape == (512, 512, 3)
-    for k in ("coef_before", "coef_after", "kept_mask", "error_map"):
-        assert body["extras"][k].startswith("data:image/png")
+    assert header.startswith("data:image/jpeg") and img.shape == (512, 512, 3)
+    for k in ("coef_before", "coef_after", "error_map"):
+        assert body["extras"][k].startswith("data:image/jpeg")
+    assert body["extras"]["kept_mask"].startswith("data:image/png")       # 0/255 mask: PNG is exact and tiny
     assert body["metrics"]["method"] == method and 20 < body["metrics"]["psnr_db"] < 50
 
 
@@ -240,15 +246,15 @@ def test_compare_compression():
     assert body["summary"]["jpeg_vs_dct"]["times_smaller"] > 1 and len(body["size_curve"]["jpeg"]) == 10
     assert len(body["rd_curve"]) == 7 and len(body["energy_curve"]) == 40
     for m in ("dct", "hadamard", "jpeg"):
-        assert body[m]["image"].startswith("data:image/png")
-        assert body[m]["extras"]["error_map"].startswith("data:image/png")
+        assert body[m]["image"].startswith("data:image/jpeg")
+        assert body[m]["extras"]["error_map"].startswith("data:image/jpeg")
     assert body["summary"]["winner"] == "dct"
     assert body["summary"]["jpeg"]["times_smaller_than_dct"] > 1 and body["jpeg"]["metrics"]["method"] == "jpeg"
 
 
 def test_guided_has_difference_map():
     body = post("/api/guided", png(S.gaussian_noise(data.camera(), 25)), intent="edges").json()
-    assert body["difference_map"].startswith("data:image/png")
+    assert body["difference_map"].startswith("data:image/")
     assert body["difference_legend"] and "only_a_pixels" in body["comparison"]
 
 
@@ -274,9 +280,10 @@ def test_keep_editing_a_gray_edge_result():
     """Bug-report row 9: A = 0 on a colour image returns a gray PNG; sending it back must work."""
     r = post("/api/process", RGB, module="sharpen_edges", params={"operation": "laplacian_boost", "A": 0}).json()
     assert any("grayscale" in w for w in r["warnings"])
-    _, gray = decode_data_url(r["image"])
-    assert gray.ndim == 2
-    again = post("/api/process", png(gray), module="denoise", params={"filter_type": "median"})
+    f = post("/api/process/file", RGB, module="sharpen_edges", params={"operation": "laplacian_boost", "A": 0})
+    gray = cv2.imdecode(np.frombuffer(f.content, np.uint8), cv2.IMREAD_UNCHANGED)
+    assert f.headers["x-ivp-format"] == "PNG" and gray.ndim == 2
+    again = post("/api/process", f.content, module="denoise", params={"filter_type": "median"})
     assert again.status_code == 200, again.text
 
 
@@ -311,10 +318,11 @@ def test_inspect_not_an_image():
     assert r.status_code == 422 and r.json()["error"]["code"] == "BAD_IMAGE"
 
 
-def _decode_file(url):
-    header, b64 = url.split(",", 1)
-    raw = base64.b64decode(b64)
-    return header, raw, Image.open(io.BytesIO(raw))
+def _download(src, **form):
+    """The compressed file itself, from /api/compress/file."""
+    r = post("/api/compress/file", src, **form)
+    assert r.status_code == 200, r.text
+    return r.content
 
 
 def test_compress_jpeg_method_returns_smaller_jpeg_file():
@@ -323,9 +331,10 @@ def test_compress_jpeg_method_returns_smaller_jpeg_file():
     f = body["file"]
     assert f["format"] == "JPEG" and f["extension"] == "jpg" and f["quality"] == 60
     assert f["original_bytes"] == len(src) and f["bytes"] < len(src) and f["size_percent"] < 100
-    header, raw, im = _decode_file(body["image"])
-    assert header.startswith("data:image/jpeg") and len(raw) == f["bytes"]
-    assert im.format == "JPEG" and im.size == (600, 400)
+    assert f["downloadable"] is True and f["note"] is None
+    raw = _download(src, params={"method": "jpeg", "quality": 60, "chroma_subsampling": "4:2:2"})
+    im = Image.open(io.BytesIO(raw))
+    assert len(raw) == f["bytes"] and im.format == "JPEG" and im.size == (600, 400)
     from PIL import JpegImagePlugin
     assert JpegImagePlugin.get_sampling(im) == 1                 # 4:2:2 kept
     assert len(im.getexif()) > 0                                 # metadata kept
@@ -338,7 +347,7 @@ def test_compress_same_format_for_transform_methods():
     assert jpg["file"]["format"] == "JPEG" and jpg["file"]["quality"] == 90
     assert jpg["file"]["source"] == "same_format_as_upload" and "method_psnr_db" in jpg["metrics"]
     png_up = post("/api/compress", RGB, params={"method": "dct", "keep_percent": 25}).json()
-    assert png_up["file"]["format"] == "PNG" and png_up["image"].startswith("data:image/png")
+    assert png_up["file"]["format"] == "PNG" and png_up["image"].startswith("data:image/jpeg")   # preview
     if png_up["file"]["bytes"] >= png_up["file"]["original_bytes"]:
         assert any("not smaller" in w for w in png_up["warnings"])
 
@@ -347,7 +356,7 @@ def test_compress_metrics_describe_the_downloaded_file():
     """PSNR reported = PSNR of the file the user downloads, measured against the input pixels."""
     src = _jpeg_file(data.coffee(), 95)
     body = post("/api/compress", src, params={"method": "jpeg", "quality": 40}).json()
-    _, raw, _ = _decode_file(body["image"])
+    raw = _download(src, params={"method": "jpeg", "quality": 40})
     shown = cv2.cvtColor(cv2.imdecode(np.frombuffer(raw, np.uint8), cv2.IMREAD_COLOR), cv2.COLOR_BGR2RGB)
     original = cv2.cvtColor(cv2.imdecode(np.frombuffer(src, np.uint8), cv2.IMREAD_COLOR), cv2.COLOR_BGR2RGB)
     mse = np.mean((shown.astype(float) - original.astype(float)) ** 2)
@@ -366,13 +375,156 @@ def test_compare_compression_jpeg_quality_option():
         assert r.status_code == 422 and r.json()["error"]["code"] == "BAD_PARAM"
 
 
-def test_compare_compression_jpeg_quality_option():
+# ------------------------------------------------------------------ limits, previews and full-quality files
+from pathlib import Path
+from urllib.parse import unquote
+
+from app import limits
+
+
+def _file_image(r):
+    assert r.status_code == 200, r.text
+    return cv2.imdecode(np.frombuffer(r.content, np.uint8), cv2.IMREAD_UNCHANGED)
+
+
+def test_health_reports_limits():
+    lim = client.get("/api/health").json()["limits"]
+    assert lim["max_upload_bytes"] == limits.MAX_UPLOAD_BYTES and lim["max_download_bytes"] == limits.MAX_DOWNLOAD_BYTES
+    assert lim["max_pixels"] == codec.MAX_PIXELS and lim["hosted_on_vercel"] is False
+
+
+def test_upload_over_the_limit_is_refused_with_the_limit_in_the_message(monkeypatch):
+    monkeypatch.setattr(main, "MAX_UPLOAD_BYTES", 100_000)
+    r = post("/api/diagnose", RGB)                           # ~0.5 MB PNG
+    assert r.status_code == 422 and r.json()["error"]["code"] == "TOO_LARGE"
+    assert "0.1 MB upload limit" in r.json()["error"]["message"]
+
+
+def test_process_file_is_full_quality_png():
+    r = post("/api/process/file", RGB, module="denoise", params={"filter_type": "median"})
+    img = _file_image(r)
+    assert r.headers["content-type"] == "image/png" and r.headers["x-ivp-format"] == "PNG"
+    assert unquote(r.headers["x-ivp-note"]) == "" and img.shape == (512, 512, 3)
+    # identical pixels to running the module in the pipeline
+    import ivp_pipeline as ivp
+    expected = ivp.run_module(data.astronaut(), "denoise", {"filter_type": "median"})["image"]
+    assert np.array_equal(cv2.cvtColor(img, cv2.COLOR_BGR2RGB), expected)
+
+
+def test_file_headers_are_readable_cross_origin():
+    r = client.post("/api/process/file", files={"file": ("x.png", CAM, "image/png")},
+                    data={"module": "denoise"}, headers={"Origin": "https://example.vercel.app"})
+    exposed = r.headers.get("access-control-expose-headers", "").lower()
+    assert all(h.lower() in exposed for h in main.FILE_HEADERS)
+
+
+def test_result_file_falls_back_to_jpeg_when_png_is_over_the_limit(monkeypatch):
+    monkeypatch.setattr(main, "MAX_DOWNLOAD_BYTES", 150_000)
+    r = post("/api/process/file", RGB, module="denoise", params={"filter_type": "median"})
+    img = _file_image(r)
+    note = unquote(r.headers["x-ivp-note"])
+    assert r.headers["content-type"] == "image/jpeg" and len(r.content) <= 150_000
+    assert "Saved as JPEG (quality" in note and "download limit" in note and img.shape == (512, 512, 3)
+
+
+def test_result_too_large_even_as_jpeg(monkeypatch):
+    monkeypatch.setattr(main, "MAX_DOWNLOAD_BYTES", 5_000)
+    r = post("/api/process/file", RGB, module="denoise")
+    assert r.status_code == 422 and r.json()["error"]["code"] == "RESULT_TOO_LARGE"
+
+
+def test_auto_file_matches_auto():
+    src = png(S.apply_gamma(data.camera(), 2.5))
+    img = _file_image(post("/api/auto/file", src))
+    import ivp_pipeline as ivp
+    assert np.array_equal(img, ivp.auto_enhance(S.apply_gamma(data.camera(), 2.5))["image"])
+
+
+def test_guided_file_routes_and_mask():
+    src = png(S.illumination_ramp(S.scene(1)[0], 40))
+    a = _file_image(post("/api/guided/file", src, intent="segment", branch="a"))
+    b = _file_image(post("/api/guided/file", src, intent="segment", branch="b"))
+    mask = _file_image(post("/api/guided/file", src, intent="segment", branch="b", layer="mask"))
+    assert a.shape == b.shape and not np.array_equal(a, b)
+    assert mask.ndim == 2 and set(np.unique(mask)) <= {0, 255}
+    clean = post("/api/guided/file", png(S.scene(1)[0]), intent="segment", branch="b")
+    assert clean.status_code == 422 and clean.json()["error"]["code"] == "BAD_PARAM"
+    bad = post("/api/guided/file", src, intent="segment", branch="c")
+    assert bad.status_code == 422
+
+
+def test_compare_compression_file_matches_the_comparison():
     coffee = png(data.coffee())
-    auto = post("/api/compare-compression", coffee, keep_percent="10").json()["summary"]["jpeg"]
-    assert auto["matched_to_dct"] is True and abs(auto["psnr_db"] - auto["dct_psnr_db"]) < 1.5
-    manual = post("/api/compare-compression", coffee, keep_percent="10", jpeg_quality="85").json()
-    assert manual["summary"]["jpeg"]["quality"] == 85 and manual["summary"]["jpeg"]["matched_to_dct"] is False
-    assert manual["jpeg"]["metrics"]["quality"] == 85
-    for bad in ("0", "101", "abc"):
-        r = post("/api/compare-compression", coffee, keep_percent="10", jpeg_quality=bad)
-        assert r.status_code == 422 and r.json()["error"]["code"] == "BAD_PARAM"
+    body = post("/api/compare-compression", coffee, keep_percent="10").json()
+    for m in ("dct", "hadamard", "jpeg"):
+        r = post("/api/compare-compression/file", coffee, method=m, keep_percent="10")
+        img = _file_image(r)
+        rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        if m == "jpeg":       # the real JPEG file the comparison measured, at the matched quality
+            assert r.headers["x-ivp-format"] == "JPEG" and len(r.content) == body["jpeg"]["metrics"]["file_bytes"]
+            assert int(r.headers["x-ivp-quality"]) == body["summary"]["jpeg"]["quality"]
+        original = data.coffee()
+        mse = np.mean((rgb.astype(float) - original.astype(float)) ** 2)
+        assert abs(10 * np.log10(255 ** 2 / mse) - body[m]["metrics"]["psnr_db"]) < 0.02, m
+    assert post("/api/compare-compression/file", coffee, method="wavelet").status_code == 422
+
+
+def test_compress_png_dct_falls_back_to_jpeg_with_a_note(monkeypatch):
+    monkeypatch.setattr(main, "MAX_DOWNLOAD_BYTES", 200_000)
+    body = post("/api/compress", RGB, params={"method": "dct", "keep_percent": 25}).json()
+    f = body["file"]
+    assert f["format"] == "JPEG" and f["bytes"] <= 200_000 and f["downloadable"] is True
+    assert "Saved as JPEG" in f["note"] and any("Saved as JPEG" in w for w in body["warnings"])
+    raw = _download(RGB, params={"method": "dct", "keep_percent": 25})
+    assert len(raw) == f["bytes"]
+
+
+def test_compress_jpeg_method_over_the_limit_is_preview_only(monkeypatch):
+    monkeypatch.setattr(main, "MAX_DOWNLOAD_BYTES", 50_000)
+    params = {"method": "jpeg", "quality": 100}
+    body = post("/api/compress", RGB, params=params).json()
+    assert body["file"]["downloadable"] is False and any("can be previewed but not downloaded" in w for w in body["warnings"])
+    r = post("/api/compress/file", RGB, params=params)
+    assert r.status_code == 422 and r.json()["error"]["code"] == "RESULT_TOO_LARGE"
+
+
+def test_previews_are_capped(monkeypatch):
+    monkeypatch.setattr(codec, "PREVIEW_SIDE", 300)
+    body = post("/api/process", RGB, module="denoise").json()
+    _, img = decode_data_url(body["image"])
+    assert max(img.shape[:2]) == 300
+
+
+PHOTO = Path(__file__).resolve().parents[2] / "dataset" / "flower.jpg"
+REPLY_BUDGET = 3.5 * 1024 * 1024        # well under Vercel's 4.5 MB per reply
+
+
+@pytest.mark.skipif(not PHOTO.exists(), reason="dataset/flower.jpg not available")
+def test_every_reply_fits_on_vercel_for_a_12_megapixel_photo(monkeypatch):
+    """The real case behind the size work: a 3072 x 2304 phone photo (2.85 MB JPEG) processed at FULL
+    resolution must give replies far below 4.5 MB on every endpoint."""
+    from ivp_pipeline import config
+    monkeypatch.setattr(config, "MAX_SIDE", 0)
+    photo = PHOTO.read_bytes()
+
+    def send(path, **form):
+        form = {k: (json.dumps(v) if isinstance(v, dict) else v) for k, v in form.items()}
+        r = client.post(path, files={"file": ("flower.jpg", photo, "image/jpeg")}, data=form)
+        assert r.status_code == 200, (path, r.text[:300])
+        assert len(r.content) < REPLY_BUDGET, (path, form, len(r.content))
+        return r
+
+    send("/api/diagnose")
+    send("/api/inspect")
+    for module, params in (("contrast", {"mode": "hist_eq"}), ("denoise", {"filter_type": "median"}),
+                           ("sharpen_edges", {"operation": "gradient"}),
+                           ("segment", {"method": "otsu"})):
+        send("/api/process", module=module, params=params)
+    for params in ({"method": "jpeg", "quality": 75}, {"method": "dct", "keep_percent": 10},
+                   {"method": "hadamard", "keep_percent": 10}):
+        body = send("/api/compress", params=params).json()
+        assert body["meta"]["shape"] == [2304, 3072]          # processed at full resolution
+    send("/api/auto")
+    send("/api/guided", intent="segment", params={"method": "otsu"})
+    send("/api/guided", intent="edges", params={"operator": "sobel", "edge_threshold": 0.2})
+    send("/api/compare-compression", keep_percent="10")

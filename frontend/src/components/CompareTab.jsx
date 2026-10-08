@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowRight, CircleCheck, Download, GitCompare, Info, Maximize2, TriangleAlert, X } from "lucide-react";
-import { api } from "../lib/api.js";
-import { download, extFor } from "../lib/image.js";
+import { EXTENSION, api, files } from "../lib/api.js";
+import { download } from "../lib/image.js";
 import { INTENTS, OPTION_LABELS, STAGE_LABELS, VERDICTS, formatBytes } from "../lib/labels.js";
 import CompareSlider from "./CompareSlider.jsx";
 import LineChart from "./charts/LineChart.jsx";
@@ -74,12 +74,12 @@ export default function CompareTab({ image, left, layout: Layout }) {
     try {
       if (intent === "compress") {
         const data = await api.compareCompression(image.file, kp, jq, "opencv", c.signal);
-        if (!c.signal.aborted) setCresult(data);
+        if (!c.signal.aborted) setCresult({ ...data, request: { keepPercent: kp } });
       } else {
         const params = paramsFor(intent, operator);
         const data = await api.guided(image.file, intent, params, "opencv", c.signal);
         if (!c.signal.aborted) {
-          setResult(data);
+          setResult({ ...data, request: { params } });
           runSweep(intent, params);           // in the background, with its own loading state
         }
       }
@@ -203,6 +203,40 @@ export default function CompareTab({ image, left, layout: Layout }) {
   return <Layout left={left} controls={sidebar} main={main} />;
 }
 
+/** Download button for a FULL-QUALITY result: the reply only carries previews, so the file is fetched from the
+ *  server when clicked. Shows the server's note when it had to send a JPEG instead of a PNG (download limit). */
+function FileButton({ label, name, fetch }) {
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);     // { tone: "note" | "error", text }
+  const click = async () => {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const f = await fetch();
+      download(f.file, `${name}.${EXTENSION[f.format] || "png"}`);
+      if (f.note) setMsg({ tone: "note", text: f.note });
+    } catch (e) {
+      setMsg({ tone: "error", text: e.message });
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <span className="relative inline-flex">
+      <Button size="sm" variant="secondary" onClick={click} loading={busy} disabled={busy}>
+        <Download className="h-3.5 w-3.5" />{label}
+      </Button>
+      {msg && (
+        <span role="status" onClick={() => setMsg(null)}
+              className={cx("absolute right-0 top-full z-10 mt-1 w-64 cursor-pointer rounded-md px-2 py-1.5 text-[11px] leading-snug shadow",
+                msg.tone === "error" ? "bg-red-50 text-red-800 ring-1 ring-red-200" : "bg-sky-50 text-sky-800 ring-1 ring-sky-200")}>
+          {msg.text}
+        </span>
+      )}
+    </span>
+  );
+}
+
 // =============================================================== Segment / Find edges
 function GuidedResults({ result, sweep, image, display, setDisplay, maskView, setMaskView, running, error, onCloseError }) {
   const v = VERDICTS[result.verdict.result];
@@ -233,12 +267,16 @@ function GuidedResults({ result, sweep, image, display, setDisplay, maskView, se
             )}
           </div>
           <div className="flex gap-2">
-            <Button size="sm" variant="secondary" onClick={() => download(aUrl, `${image.name}_direct.${extFor(aUrl)}`)}><Download className="h-3.5 w-3.5" />Direct</Button>
-            {b && <Button size="sm" variant="secondary" onClick={() => download(bUrl, `${image.name}_guided.${extFor(bUrl)}`)}><Download className="h-3.5 w-3.5" />Guided</Button>}
+            {["a", "b"].filter((br) => br === "a" || b).map((br) => (
+              <FileButton key={br} label={br === "a" ? "Direct" : "Guided"}
+                          name={`${image.name}_${br === "a" ? "direct" : "guided"}${maskView && result.intent === "segment" ? "_mask" : ""}`}
+                          fetch={() => files.guided(image.file, result.intent, result.request.params, "opencv", br,
+                            maskView && result.intent === "segment" ? "mask" : "image")} />
+            ))}
           </div>
         </div>
         {!b ? (
-          <CompareSlider before={result.input || image.url} after={aUrl} beforeLabel="Input" afterLabel="Result" busy={running} overlay={<Spinner />} />
+          <CompareSlider before={image.url} after={aUrl} beforeLabel="Input" afterLabel="Result" busy={running} overlay={<Spinner />} />
         ) : display === "slider" ? (
           <>
             <CompareSlider before={aUrl} after={bUrl} beforeLabel="A · Direct" afterLabel="B · Guided" busy={running} overlay={<Spinner />} />
@@ -252,7 +290,7 @@ function GuidedResults({ result, sweep, image, display, setDisplay, maskView, se
         )}
       </Card>
 
-      {b && <PipelineStrip input={result.input || image.url} stages={b.stages} target={TARGET_NAME[result.intent]} />}
+      {b && <PipelineStrip input={image.url} stages={b.stages} target={TARGET_NAME[result.intent]} />}
       <WhyCard findings={result.diagnosis.findings} stages={b?.stages || []} />
     </div>
   );
@@ -427,9 +465,12 @@ function CompressionResults({ r, image, error, onCloseError }) {
                        ...(j ? [{ value: "jpeg", label: "DCT vs JPEG-style" }] : []),
                        { value: "side", label: "Side by side" }]} />
           <div className="flex flex-wrap gap-2">
-            <Button size="sm" variant="secondary" onClick={() => download(d.image, `${image.name}_dct_${kp}pct.png`)}><Download className="h-3.5 w-3.5" />DCT</Button>
-            <Button size="sm" variant="secondary" onClick={() => download(h.image, `${image.name}_hadamard_${kp}pct.png`)}><Download className="h-3.5 w-3.5" />Hadamard</Button>
-            {j && <Button size="sm" variant="secondary" onClick={() => download(j.image, `${image.name}_jpeg_q${jq}.png`)}><Download className="h-3.5 w-3.5" />JPEG-style</Button>}
+            <FileButton label="DCT" name={`${image.name}_dct_${kp}pct`}
+                        fetch={() => files.compareCompression(image.file, "dct", kp, null, "opencv")} />
+            <FileButton label="Hadamard" name={`${image.name}_hadamard_${kp}pct`}
+                        fetch={() => files.compareCompression(image.file, "hadamard", kp, null, "opencv")} />
+            {j && <FileButton label="JPEG-style" name={`${image.name}_jpeg_q${jq}`}
+                              fetch={() => files.compareCompression(image.file, "jpeg", kp, jq, "opencv")} />}
           </div>
         </div>
         {view === "slider" && (

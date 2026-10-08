@@ -21,7 +21,9 @@ export const TOOLS = [
     presets: [
       { id: "median3", label: "Salt & pepper specks", hint: "3×3 median filter", params: { filter_type: "median", kernel_size: 3 } },
       { id: "median5", label: "Heavy specks", hint: "5×5 median filter", params: { filter_type: "median", kernel_size: 5 } },
+      { id: "median7", label: "Big specks (e.g. screenshots)", hint: "7×7 median: specks 2–3 px wide", params: { filter_type: "median", kernel_size: 7 } },
       { id: "gauss", label: "Grainy / sensor noise", hint: "Gaussian blur, σ = 1", params: { filter_type: "gaussian", sigma: 1.0 } },
+      { id: "gauss_coarse", label: "Coarse grain (e.g. screenshots)", hint: "Gaussian blur, σ = 1.5: grain 2–3 px wide", params: { filter_type: "gaussian", sigma: 1.5 } },
       { id: "box3", label: "Simple blur", hint: "3×3 averaging filter", params: { filter_type: "box", kernel_size: 3 } },
     ],
   },
@@ -91,8 +93,11 @@ export const OPTION_LABELS = {
 };
 
 export const FINDINGS = {
-  IMPULSE_NOISE: { title: "Salt & pepper noise", fix: { tool: "denoise", preset: "median3", label: "Remove specks" } },
-  GAUSSIAN_NOISE: { title: "Grainy noise", fix: { tool: "denoise", preset: "gauss", label: "Smooth grain" } },
+  IMPULSE_NOISE: { title: "Salt & pepper noise", fix: { tool: "denoise", preset: "median3", label: "Remove specks" },
+    // specks smeared over 2–3 px by resizing (screenshots): found at half scale, need a bigger median
+    enlarged: { title: "Salt & pepper specks (enlarged)", fix: { tool: "denoise", preset: "median5", label: "Remove specks" } } },
+  GAUSSIAN_NOISE: { title: "Grainy noise", fix: { tool: "denoise", preset: "gauss", label: "Smooth grain" },
+    enlarged: { title: "Coarse grain (enlarged noise)", fix: { tool: "denoise", preset: "gauss_coarse", label: "Smooth grain" } } },
   UNEVEN_ILLUMINATION: { title: "Uneven lighting (possibly)" },
   LOW_SEPARABILITY: { title: "Object/background not clearly separated" },
   UNDEREXPOSED: { title: "Too dark", fix: { tool: "contrast", preset: "auto_gamma", label: "Auto brightness" } },
@@ -100,6 +105,15 @@ export const FINDINGS = {
   CLIPPING: { title: "Clipped shadows or highlights" },
   LOW_CONTRAST: { title: "Low contrast", fix: { tool: "contrast", preset: "stretch", label: "Boost contrast" } },
 };
+
+/** The median preset that matches a speck finding's suggested window size. */
+export const MEDIAN_PRESET = { 3: "median3", 5: "median5", 7: "median7" };
+
+/** Shortcuts offered when the Health card found no noise but the user still sees some. */
+export const MANUAL_NOISE_FIXES = [
+  { tool: "denoise", preset: "median5", label: "Remove specks" },
+  { tool: "denoise", preset: "gauss", label: "Smooth grain" },
+];
 
 /** Findings that only matter for segmentation. The health card hides them; Compare → Segment shows them under "Why?". */
 export const SEGMENTATION_ONLY_FINDINGS = new Set(["UNEVEN_ILLUMINATION", "LOW_SEPARABILITY"]);
@@ -109,6 +123,7 @@ export const METRIC_LABELS = {
   gamma_used: "Gamma used", polarity_used: "Objects detected as",
   noise_sigma_before: "Noise σ before", noise_sigma_after: "Noise σ after",
   impulse_density_before: "Specks before", impulse_density_after: "Specks after", kernel_size_used: "Kernel size",
+  speck_density_coarse_before: "Enlarged specks before", speck_density_coarse_after: "Enlarged specks after",
   kernel_centre: "Mask centre weight", mean_magnitude: "Mean gradient", edge_density: "Edge pixels",
   threshold: "Otsu threshold", eta: "Separability η", foreground_fraction: "Object area",
   n_components_raw: "Pieces before cleanup", n_components: "Pieces after cleanup",
@@ -134,7 +149,8 @@ export function formatBytes(n) {
   return `${(n / 1024 / 1024).toFixed(2)} MB`;
 }
 
-const PERCENT_KEYS = new Set(["impulse_density_before", "impulse_density_after", "edge_density", "foreground_fraction"]);
+const PERCENT_KEYS = new Set(["impulse_density_before", "impulse_density_after", "speck_density_coarse_before",
+  "speck_density_coarse_after", "edge_density", "foreground_fraction"]);
 const ALREADY_PERCENT = new Set(["kept_percent", "energy_kept_percent"]);
 
 export function formatMetric(key, v) {

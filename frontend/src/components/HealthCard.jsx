@@ -1,11 +1,23 @@
 import { useState } from "react";
 import { Activity, ChevronDown, CircleCheck, Info, LoaderCircle, TriangleAlert } from "lucide-react";
-import { FINDINGS, SEGMENTATION_ONLY_FINDINGS } from "../lib/labels.js";
+import { FINDINGS, MANUAL_NOISE_FIXES, MEDIAN_PRESET, SEGMENTATION_ONLY_FINDINGS } from "../lib/labels.js";
 import { Card, Stat, cx } from "./ui.jsx";
+
+const NOISE_CODES = new Set(["IMPULSE_NOISE", "GAUSSIAN_NOISE"]);
+
+/** Title and fix for a finding; enlarged noise (screenshots) has its own wording and a bigger filter. */
+function findingMeta(f) {
+  const base = FINDINGS[f.code] || { title: f.code };
+  const meta = f.scale === "enlarged" && base.enlarged ? base.enlarged : base;
+  if (f.code === "IMPULSE_NOISE" && meta.fix && MEDIAN_PRESET[f.median_ksize]) {
+    return { ...meta, fix: { ...meta.fix, preset: MEDIAN_PRESET[f.median_ksize] } };
+  }
+  return meta;
+}
 
 function Finding({ f, onFix }) {
   const [open, setOpen] = useState(false);
-  const meta = FINDINGS[f.code] || { title: f.code };
+  const meta = findingMeta(f);
   const warn = f.severity === "warning";
   const Icon = warn ? TriangleAlert : Info;
   return (
@@ -55,6 +67,18 @@ export default function HealthCard({ health, loading, error, onFix }) {
                 .sort((a, b) => (a.severity === "warning" ? -1 : 0) - (b.severity === "warning" ? -1 : 0))
                 .map((f) => <Finding key={f.code} f={f} onFix={onFix} />)}
             </ul>
+          )}
+          {onFix && !findings.some((f) => NOISE_CODES.has(f.code)) && (
+            // No detector is perfect: let the user act on what they see.
+            <div className="flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
+              <span>Still looks noisy to you?</span>
+              {MANUAL_NOISE_FIXES.map((x) => (
+                <button key={x.preset} onClick={() => onFix(x.tool, x.preset)}
+                        className="rounded-md bg-white px-2 py-0.5 font-medium text-brand-700 ring-1 ring-brand-100 hover:bg-brand-50">
+                  {x.label}
+                </button>
+              ))}
+            </div>
           )}
         </div>
       )}

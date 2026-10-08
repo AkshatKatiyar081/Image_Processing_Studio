@@ -4,7 +4,7 @@ from __future__ import annotations
 import numpy as np
 
 from . import config as C
-from .diagnostics import diagnose_prepared
+from .diagnostics import diagnose_prepared, gaussian_noise, impulse_noise
 from .pipeline import step
 from .utils import hist_list
 
@@ -24,21 +24,24 @@ def auto_enhance_prepared(img: np.ndarray, engine: str) -> dict:
                       "metrics": res["metrics"]})
         d = diagnose_prepared(cur)["metrics"]
 
-    if d["impulse_density"] > C.IMPULSE_DENSITY:
-        apply("denoise", {"filter_type": "median", "kernel_size": 5 if d["impulse_density"] > C.IMPULSE_HEAVY else 3},
-              f"salt-and-pepper noise on {d['impulse_density']:.2%} of pixels")
+    imp = impulse_noise(d)
+    if imp:
+        k = imp["median_ksize"]
+        apply("denoise", {"filter_type": "median", "kernel_size": k},
+              f"salt-and-pepper noise on {d['impulse_density']:.2%} of pixels" if imp["scale"] == "pixel" else
+              f"enlarged salt-and-pepper specks ({imp['value']:.1%} at half scale, e.g. a screenshot): "
+              f"{k}×{k} median, a 3×3 one is too small for them")
         skip_sharpen = True
-    if d["noise_sigma"] > C.NOISE_STRONG:
-        apply("denoise", {"filter_type": "gaussian", "sigma": 1.0},
-              f"sensor noise σ ≈ {d['noise_sigma']:.1f}")
-        skip_sharpen = True
-    elif d["noise_sigma"] > C.NOISE_MODERATE:
-        # Moderate noise (σ in NOISE_MODERATE..NOISE_STRONG): apply a lighter
-        # Gaussian (σ 0.6) instead of skipping denoising entirely.  This is gentler
-        # than the strong-noise path (σ 1.0) so fine detail is preserved while
-        # grain visible to the eye is still meaningfully reduced.
-        apply("denoise", {"filter_type": "gaussian", "sigma": 0.6},
-              f"moderate sensor noise σ ≈ {d['noise_sigma']:.1f} (light smoothing)")
+    gn = gaussian_noise(d)       # measured again after the median: removing specks usually lowers σ too
+    if gn:
+        # pixel scale: σ 1.0 for strong noise, a lighter σ 0.6 for moderate noise (keeps fine detail);
+        # enlarged grain (2–3 px wide): σ 1.5
+        if gn["scale"] == "pixel":
+            reason = (f"sensor noise σ ≈ {d['noise_sigma']:.1f}" if gn["strong"] else
+                      f"moderate sensor noise σ ≈ {d['noise_sigma']:.1f} (light smoothing)")
+        else:
+            reason = f"coarse grain σ ≈ {gn['value']:.1f} at half scale (enlarged noise, e.g. a screenshot)"
+        apply("denoise", {"filter_type": "gaussian", "sigma": gn["sigma"]}, reason)
         skip_sharpen = True
     if d["mean"] < C.DARK_MEAN or d["mean"] > C.BRIGHT_MEAN:
         apply("contrast", {"mode": "gamma", "gamma": "auto"},
@@ -49,7 +52,7 @@ def auto_enhance_prepared(img: np.ndarray, engine: str) -> dict:
     if not skip_sharpen:
         apply("sharpen_edges", {"operation": "unsharp", "k": C.AUTO_UNSHARP_K,
                                 "blur_sigma": C.AUTO_UNSHARP_SIGMA},
-              "mild unsharp masking for crispness (skipped whenever noise was found)")
+              "mild unsharp masking for crispness (skipped whenever noise was found, at any scale)")
 
     return {
         "image": cur,
