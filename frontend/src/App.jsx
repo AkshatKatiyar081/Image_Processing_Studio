@@ -194,7 +194,7 @@ export default function App() {
           <div className="flex items-center gap-2.5">
             <img src="/favicon.svg" alt="" className="h-7 w-7" />
             <div>
-              <div className="text-sm font-bold leading-tight text-slate-900">IVP Studio</div>
+              <div className="text-sm font-bold leading-tight text-slate-900">Image Processing Studio</div>
               <div className="text-[11px] leading-tight text-slate-500">Image enhancement &amp; diagnostics</div>
             </div>
           </div>
