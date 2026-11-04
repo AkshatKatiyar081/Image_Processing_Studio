@@ -1,4 +1,4 @@
-"""Close-out of the earlier automated bug report (CLAUDE_CODE_INSTRUCTIONS.md, Phase F).
+"""Close-out of the earlier bug report (Phase F).
 
 Each test would FAIL if the reported bug were real. Row numbers refer to the table in CHANGES.md.
 """

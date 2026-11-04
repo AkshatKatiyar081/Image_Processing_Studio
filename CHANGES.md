@@ -1,6 +1,6 @@
 # CHANGES — IVP Studio v3 (2026-10-04)
 
-Work done from `CLAUDE_CODE_INSTRUCTIONS.md`, phases 0 → G. Nothing has been committed; see
+Work done in phases 0 → G. Nothing has been committed; see
 [Suggested commits](#suggested-commits) at the end.
 
 ## Summary
