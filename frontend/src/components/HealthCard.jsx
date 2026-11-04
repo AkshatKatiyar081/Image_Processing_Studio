@@ -46,7 +46,7 @@ export default function HealthCard({ health, loading, error, onFix }) {
   // Lighting/separability findings only matter for segmentation: they are shown in Compare → Segment instead.
   const findings = (health?.findings || []).filter((f) => !SEGMENTATION_ONLY_FINDINGS.has(f.code));
   return (
-    <Card title="Image health" icon={Activity}
+    <Card title="Image health" icon={Activity} tour="health"
           action={loading && <LoaderCircle className="h-4 w-4 animate-spin text-slate-400" />}>
       {error && <p className="text-sm text-red-700">{error}</p>}
       {!health && !error && <p className="text-sm text-slate-500">{loading ? "Checking the image…" : "Load an image to check it for noise, exposure and contrast problems."}</p>}

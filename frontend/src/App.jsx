@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { GitCompare, SlidersHorizontal, WandSparkles } from "lucide-react";
+import { CircleHelp, GitCompare, SlidersHorizontal, WandSparkles } from "lucide-react";
 import { api, waitForServer } from "./lib/api.js";
 import { limitProblem, lumaHistogram, prepareImage } from "./lib/image.js";
 import AutoTab from "./components/AutoTab.jsx";
@@ -7,6 +7,7 @@ import CompareTab from "./components/CompareTab.jsx";
 import HealthCard from "./components/HealthCard.jsx";
 import ImagePanel from "./components/ImagePanel.jsx";
 import ToolsTab from "./components/ToolsTab.jsx";
+import Tour, { tourSeen } from "./components/Tour.jsx";
 import { Button, cx } from "./components/ui.jsx";
 
 const TABS = [
@@ -98,6 +99,7 @@ export default function App() {
   const [fixRequest, setFixRequest] = useState(null);
   const [loadError, setLoadError] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [tour, setTour] = useState(false);
   const healthCtrl = useRef(null);
 
   const connect = useCallback(async () => {
@@ -113,6 +115,12 @@ export default function App() {
   }, []);
 
   useEffect(() => { connect(); }, [connect]);
+
+  // First visit: start the tour once the server is online (so the samples and upload limits are known)
+  useEffect(() => { if (server === "online" && !tourSeen()) startTour(); }, [server]); // eslint-disable-line
+
+  const startTour = () => { setTab("tools"); setTour(true); };
+  const closeTour = useCallback(() => setTour(false), []);
 
   // Diagnose + client-side histogram whenever the working image changes
   useEffect(() => {
@@ -198,18 +206,26 @@ export default function App() {
               <div className="text-[11px] leading-tight text-slate-500">Image enhancement &amp; diagnostics</div>
             </div>
           </div>
-          <nav className="order-3 flex w-full gap-1 rounded-xl bg-slate-100 p-1 sm:order-none sm:w-auto" role="tablist">
+          <nav data-tour="tabs" className="order-3 flex w-full gap-1 rounded-xl bg-slate-100 p-1 sm:order-none sm:w-auto" role="tablist">
             {TABS.map((t) => (
-              <button key={t.id} role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)}
+              <button key={t.id} role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)} data-tour={`tab-${t.id}`}
                       className={cx("flex flex-1 items-center justify-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium transition sm:flex-none",
                         tab === t.id ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800")}>
                 <t.icon className="h-4 w-4" />{t.label}
               </button>
             ))}
           </nav>
-          <ServerStatus status={server} onRetry={connect} />
+          <div className="flex items-center gap-1">
+            <button onClick={startTour} data-tour="help" title="Take the tour"
+                    className="flex items-center gap-1.5 rounded-full px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100">
+              <CircleHelp className="h-4 w-4" /><span className="hidden sm:inline">Take the tour</span>
+            </button>
+            <ServerStatus status={server} onRetry={connect} />
+          </div>
         </div>
       </header>
+
+      <Tour open={tour} onClose={closeTour} image={image} limits={limits} onTab={setTab} />
 
       <div className={cx("mx-auto w-full max-w-[1500px] px-4",
         desktop ? "flex min-h-0 flex-1 flex-col gap-4 pt-4" : "space-y-4 py-4")}>

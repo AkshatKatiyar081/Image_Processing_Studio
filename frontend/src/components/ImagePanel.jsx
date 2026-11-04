@@ -38,7 +38,7 @@ export default function ImagePanel({ image, onFile, onReset, canUndo, onUndo, lo
   };
 
   return (
-    <Card title="Image" icon={ImageIcon}
+    <Card title="Image" icon={ImageIcon} tour="image"
           action={image && !open && <button className="text-xs font-medium text-brand-600 hover:underline" onClick={() => setOpen(true)}>Change</button>}>
       {image && !open ? (
         <div className="flex items-center gap-3">

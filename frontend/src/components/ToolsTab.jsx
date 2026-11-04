@@ -148,7 +148,7 @@ export default function ToolsTab({ image, schemas, left, request, beforeHist, on
 
   const sidebar = (
     <>
-      <Card title="1 · Choose a tool" icon={WandSparkles}>
+      <Card title="1 · Choose a tool" icon={WandSparkles} tour="tools">
         <div className="grid grid-cols-2 gap-2">
           {TOOLS.map((t) => (
             <button key={t.id} onClick={() => selectTool(t.id)} aria-pressed={toolId === t.id}
@@ -162,7 +162,7 @@ export default function ToolsTab({ image, schemas, left, request, beforeHist, on
         <p className="mt-2 text-xs text-slate-500">{tool.blurb}</p>
       </Card>
 
-      <Card title="2 · Pick an effect" icon={SlidersHorizontal}>
+      <Card title="2 · Pick an effect" icon={SlidersHorizontal} tour="effects">
         {!image && <p className="mb-2 text-xs text-amber-700">Load an image first.</p>}
         <div className="space-y-1.5">
           {tool.presets.map((p) => (
@@ -207,7 +207,7 @@ export default function ToolsTab({ image, schemas, left, request, beforeHist, on
         <FileCard info={info} error={fileInfo.id === image.id ? fileInfo.error : null}
                   file={isCompress ? result.data.file : null} />
       )}
-      <Card>
+      <Card tour="result">
         <div className="space-y-3">
           <BeforeAfterView view={view} before={beforeUrl} after={afterUrl}
                            afterLabel={result ? toolById(result.tool)?.name || "After" : "After"}
@@ -218,7 +218,7 @@ export default function ToolsTab({ image, schemas, left, request, beforeHist, on
                 <ViewToggle value={view} onChange={setView} />
                 {view === "slider" && <span className="text-xs text-slate-500">Drag the divider to compare.</span>}
               </div>
-              <div className="flex flex-wrap gap-2">
+              <div data-tour="actions" className="flex flex-wrap gap-2">
                 <Button size="sm" variant="secondary" onClick={() => save("chain")} loading={saving === "chain"}
                         disabled={!!saving || blocked}>Keep editing this result</Button>
                 <Button size="sm" onClick={() => save("download")} loading={saving === "download"} disabled={!!saving || blocked}
@@ -239,7 +239,7 @@ export default function ToolsTab({ image, schemas, left, request, beforeHist, on
 
       {isCompress && <CompressionCards data={result.data} />}
 
-      <div className="grid gap-4 xl:grid-cols-[1.4fr_1fr]">
+      <div data-tour="charts" className="grid gap-4 xl:grid-cols-[1.4fr_1fr]">
         <Card>
           <Histogram before={result?.data.histograms.before || beforeHist} after={result?.data.histograms.after} />
         </Card>

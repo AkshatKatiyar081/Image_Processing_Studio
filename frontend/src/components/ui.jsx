@@ -2,9 +2,9 @@ import { LoaderCircle, TriangleAlert, X } from "lucide-react";
 
 export const cx = (...c) => c.filter(Boolean).join(" ");
 
-export function Card({ title, icon: Icon, action, className, children }) {
+export function Card({ title, icon: Icon, action, className, tour, children }) {
   return (
-    <section className={cx("rounded-xl border border-slate-200 bg-white shadow-sm", className)}>
+    <section data-tour={tour} className={cx("rounded-xl border border-slate-200 bg-white shadow-sm", className)}>
       {title && (
         <header className="flex items-center justify-between gap-2 border-b border-slate-100 px-4 py-2.5">
           <h2 className="flex items-center gap-2 text-sm font-semibold text-slate-700">
