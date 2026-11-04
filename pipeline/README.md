@@ -1,4 +1,4 @@
-# IVP Enhancement & Diagnostic Studio — pipeline
+# Image Processing Studio — pipeline
 
 Image-processing pipeline for the IVP mini project (NMIMS MPSTME Shirpur, 702EX0E020).
 It implements the four course modules, a diagnostic "quality gate" that runs the operator

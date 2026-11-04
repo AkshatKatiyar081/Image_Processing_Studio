@@ -1,4 +1,4 @@
-"""IVP Enhancement & Diagnostic Studio — image-processing pipeline.
+"""Image Processing Studio — image-processing pipeline.
 
 Public API (spec §12). All functions take a uint8 RGB (H x W x 3) or grayscale (H x W)
 NumPy array and return plain dicts of NumPy arrays / numbers / lists. The caller is

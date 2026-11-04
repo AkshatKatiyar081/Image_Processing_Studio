@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "ivp-pipeline"
 version = "1.0.0"
-description = "IVP Enhancement & Diagnostic Studio - image-processing pipeline"
+description = "Image Processing Studio - image-processing pipeline"
 requires-python = ">=3.10"
 dependencies = [
   "numpy>=1.24",

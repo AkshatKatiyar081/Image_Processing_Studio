@@ -1,4 +1,4 @@
-# IVP Studio
+# Image Processing Studio
 
 Image & Video Processing mini project (NMIMS MPSTME Shirpur, 702EX0E020): a web dashboard for
 image enhancement, diagnostics, and a Direct-vs-Guided comparison. It shows why classical

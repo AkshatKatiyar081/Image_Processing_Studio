@@ -1,4 +1,4 @@
-"""FastAPI backend for IVP Studio. A thin HTTP layer over the ivp_pipeline package.
+"""FastAPI backend for Image Processing Studio. A thin HTTP layer over the ivp_pipeline package.
 
 Run locally:   uvicorn app.main:app --reload --port 8000     (from the backend/ folder)
 Env vars:      ALLOWED_ORIGINS  comma-separated list for CORS (default "*")
@@ -47,7 +47,7 @@ FILE_HEADERS = ["X-IVP-Format", "X-IVP-Quality", "X-IVP-Note"]
 # compression artefacts being compared.
 COMPARE_PREVIEW_SIDE, COMPARE_PREVIEW_QUALITY = 1024, 92
 
-app = FastAPI(title="IVP Studio API", version=ivp.__version__,
+app = FastAPI(title="Image Processing Studio API", version=ivp.__version__,
               description="Image & Video Processing mini project — enhancement, diagnostics, guided comparison.")
 
 
